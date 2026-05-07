@@ -1,36 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finanzas App
 
-## Getting Started
+Web App de gestión de ingresos y egresos personales.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Framework**: Next.js 16 (App Router)
+- **Base de Datos & Auth**: Supabase (PostgreSQL, Auth, RLS)
+- **Estilos**: Tailwind CSS v4 + componentes estilo Shadcn/UI
+- **Iconos**: Lucide React
+- **Gráficos**: Recharts
+- **Exportación**: jsPDF, xlsx, CSV nativo
+- **Hosting**: Vercel
+
+## Setup Inicial
+
+### 1. Crear proyecto en Supabase
+
+1. Ir a [supabase.com](https://supabase.com) y crear un nuevo proyecto.
+2. En **SQL Editor**, ejecutar el contenido de `supabase/schema.sql`.
+3. En **Project Settings → API**, copiar:
+   - `Project URL`
+   - `anon public key`
+
+### 2. Configurar variables de entorno
+
+Editar el archivo `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Configurar Auth en Supabase
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+En el panel de Supabase, ir a **Authentication → URL Configuration**:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Site URL**: `http://localhost:3000` (desarrollo) o tu dominio de producción
+- **Redirect URLs**: 
+  - `http://localhost:3000/**`
+  - `https://tu-dominio.vercel.app/**`
 
-## Learn More
+### 4. Instalar y ejecutar
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Abrir [http://localhost:3000](http://localhost:3000)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy en Vercel
 
-## Deploy on Vercel
+1. Importar el repositorio en [vercel.com](https://vercel.com)
+2. Agregar las variables de entorno en el panel de Vercel:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Deploy!
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Estructura del Proyecto
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+finanzas-app/
+├── app/
+│   ├── (auth)/              # Login, Register, Forgot Password
+│   ├── (dashboard)/         # Área autenticada
+│   │   ├── dashboard/       # Dashboard principal
+│   │   ├── transactions/    # CRUD de movimientos
+│   │   ├── accounts/        # Gestión de cuentas
+│   │   ├── categories/      # Categorías
+│   │   ├── tags/            # Etiquetas
+│   │   └── reports/         # Reportes y gráficos
+│   └── actions/             # Server Actions
+├── components/
+│   ├── ui/                  # Componentes base (Button, Card, Dialog...)
+│   ├── dashboard/           # Dashboard, Header, Sidebar, Reports
+│   ├── accounts/            # Gestión de cuentas
+│   ├── categories/          # Categorías y etiquetas
+│   └── transactions/        # Formularios de movimientos
+├── lib/
+│   ├── supabase/            # Cliente Supabase (browser/server)
+│   ├── types.ts             # Tipos TypeScript
+│   ├── utils.ts             # Utilidades (formatCurrency, etc.)
+│   └── export.ts            # Exportación PDF, Excel, CSV
+├── hooks/
+│   └── use-toast.ts         # Hook de notificaciones
+├── middleware.ts             # Auth middleware
+└── supabase/
+    └── schema.sql           # Schema de la base de datos
+```
+
+## Funcionalidades
+
+- ✅ Autenticación completa (registro, login, recuperación de contraseña)
+- ✅ Validación de email (link de confirmación)
+- ✅ Dashboard con gráfico de dona y lista de movimientos agrupada por día
+- ✅ CRUD de Cuentas (con monedas: ARS, USD, EUR, etc.)
+- ✅ CRUD de Categorías con etiquetas dinámicas (creación al vuelo)
+- ✅ CRUD de Etiquetas independiente
+- ✅ Alerta de baja de categorías con movimientos en el último año
+- ✅ Registro de Ingresos, Gastos y Transferencias
+- ✅ Filtros multivariable (tipo, período, cuenta, categoría, etiquetas)
+- ✅ Exportación a PDF, Excel y CSV
+- ✅ Dark/Light Mode
+- ✅ 100% Responsive (Mobile First)
+- ✅ Row Level Security (datos privados por usuario)
