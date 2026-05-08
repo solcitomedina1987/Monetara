@@ -33,12 +33,12 @@ export function Sidebar({ onClose }: SidebarProps) {
       <div className="flex h-16 items-center justify-between px-6 border-b">
         <Link
           href="/dashboard"
-          className="flex items-center gap-2.5 font-bold text-lg transition-opacity hover:opacity-80"
+          className="flex items-center gap-2 font-bold text-lg transition-opacity hover:opacity-80"
           onClick={onClose}
         >
           <Image
-            src="/logo-monetara.png"
-            alt="Monetara"
+            src="/logo-monetara-logo.png"
+            alt="Logo Monetara"
             width={28}
             height={28}
             className="h-7 w-7 object-contain shrink-0"

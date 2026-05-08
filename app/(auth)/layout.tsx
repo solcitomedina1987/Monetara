@@ -6,17 +6,15 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Left panel - branding (desktop only) */}
       <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground">
-        <Link href="/login" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-          <div className="rounded-xl bg-white/15 p-2 backdrop-blur-sm">
-            <Image
-              src="/logo-monetara.png"
-              alt="Monetara"
-              width={36}
-              height={36}
-              className="h-9 w-9 object-contain"
-              priority
-            />
-          </div>
+        <Link href="/login" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
+          <Image
+            src="/logo-monetara-logo.png"
+            alt="Logo Monetara"
+            width={32}
+            height={32}
+            className="h-8 w-8 object-contain shrink-0"
+            priority
+          />
           <span className="text-2xl font-bold tracking-tight">Monetara</span>
         </Link>
 
@@ -36,21 +34,35 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       {/* Right panel - form */}
       <div className="flex flex-col items-center justify-center p-8 bg-background">
-        {/* Logo visible only on mobile */}
-        <Link
-          href="/login"
-          className="flex flex-col items-center gap-2 mb-8 lg:hidden transition-opacity hover:opacity-80"
-        >
-          <Image
-            src="/logo-monetara.png"
-            alt="Monetara"
-            width={64}
-            height={64}
-            className="h-16 w-16 object-contain"
-            priority
-          />
-          <span className="text-xl font-bold tracking-tight">Monetara</span>
-        </Link>
+        {/* Logo grande centrado (visible siempre en mobile, oculto en desktop donde ya está el panel) */}
+        <div className="flex flex-col items-center mb-8 lg:mb-6">
+          {/* Logo completo grande */}
+          <Link href="/login" className="transition-opacity hover:opacity-80">
+            <Image
+              src="/logo-monetara.png"
+              alt="Logo Monetara"
+              width={180}
+              height={72}
+              className="h-auto w-44 object-contain"
+              priority
+            />
+          </Link>
+
+          {/* Nombre de marca con icono — visible solo en mobile (el desktop tiene el panel izquierdo) */}
+          <Link
+            href="/login"
+            className="flex items-center gap-1.5 mt-3 lg:hidden transition-opacity hover:opacity-80"
+          >
+            <Image
+              src="/logo-monetara-logo.png"
+              alt="Logo Monetara"
+              width={20}
+              height={20}
+              className="h-5 w-5 object-contain"
+            />
+            <span className="text-base font-semibold text-foreground">Monetara</span>
+          </Link>
+        </div>
 
         <div className="w-full max-w-md">
           {children}
