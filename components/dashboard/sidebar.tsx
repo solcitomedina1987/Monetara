@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle, ArrowLeftRight,
@@ -9,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand-logo";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -36,9 +36,8 @@ export function Sidebar({ onClose }: SidebarProps) {
           className="flex items-center gap-2 font-bold text-lg transition-opacity hover:opacity-80"
           onClick={onClose}
         >
-          <Image
-            src="/logo-monetara-logo.png"
-            alt="Logo Monetara"
+          <BrandLogo
+            variant="icon"
             width={28}
             height={28}
             className="h-7 w-7 object-contain shrink-0"

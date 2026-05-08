@@ -53,6 +53,34 @@
     --warning: 38 92% 50%;
     --warning-foreground: 48 96% 89%;
   }
+
+  /* ── Monetara Theme ── #f4f0e0 background · #0e415f primary ── */
+  .monetara {
+    --background: 48 48% 92%;        /* #f4f0e0 crema cálido */
+    --foreground: 202 74% 14%;       /* texto oscuro derivado de #0e415f */
+    --card: 0 0% 100%;               /* blanco puro para tarjetas */
+    --card-foreground: 202 74% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 202 74% 14%;
+    --primary: 202 74% 21%;          /* #0e415f azul profundo */
+    --primary-foreground: 48 48% 96%;
+    --secondary: 48 30% 86%;         /* crema suave */
+    --secondary-foreground: 202 74% 21%;
+    --muted: 48 35% 87%;
+    --muted-foreground: 202 30% 42%;
+    --accent: 204 64% 34%;           /* #1f628e hover/detalles */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 48 22% 82%;
+    --input: 48 22% 82%;
+    --ring: 202 74% 21%;
+    --radius: 0.5rem;
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 355.7 100% 97.3%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 48 96% 89%;
+  }
 }
 
 @theme inline {

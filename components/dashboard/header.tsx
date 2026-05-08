@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Menu, Moon, Sun, LogOut, User } from "lucide-react";
+import { Menu, Moon, Sun, LogOut, User, Palette, Check } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,8 +18,14 @@ interface HeaderProps {
   onMenuClick: () => void;
 }
 
+const THEMES = [
+  { id: "light",    label: "Claro",    icon: Sun },
+  { id: "dark",     label: "Oscuro",   icon: Moon },
+  { id: "monetara", label: "Monetara", icon: Palette },
+] as const;
+
 export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(initialProfile);
@@ -48,6 +54,13 @@ export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
     ? `${profile.nombre?.[0] ?? ""}${profile.apellido?.[0] ?? ""}`.toUpperCase()
     : "U";
 
+  const currentThemeIcon = resolvedTheme === "dark"
+    ? Moon
+    : resolvedTheme === "monetara"
+    ? Palette
+    : Sun;
+  const CurrentIcon = currentThemeIcon;
+
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur px-4 md:px-6">
       <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick}>
@@ -57,16 +70,35 @@ export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
       <div className="flex-1 md:flex-none" />
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          aria-label="Cambiar tema"
-        >
-          <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        </Button>
+        {/* Theme selector dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Cambiar tema">
+              <CurrentIcon className="h-5 w-5 transition-transform" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+              Tema visual
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {THEMES.map(({ id, label, icon: Icon }) => (
+              <DropdownMenuItem
+                key={id}
+                onClick={() => setTheme(id)}
+                className="flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4" />
+                  <span>{label}</span>
+                </div>
+                {theme === id && <Check className="h-3.5 w-3.5 text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
+        {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-9 w-9 rounded-full">

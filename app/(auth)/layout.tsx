@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,14 +7,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       {/* Left panel - branding (desktop only) */}
       <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground">
         <Link href="/login" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
-          <Image
-            src="/logo-monetara-logo.png"
-            alt="Logo Monetara"
-            width={32}
-            height={32}
-            className="h-8 w-8 object-contain shrink-0"
-            priority
-          />
+          <div className="rounded-xl bg-white/15 p-1.5 backdrop-blur-sm">
+            <BrandLogo variant="icon" width={32} height={32} className="h-8 w-8 object-contain" priority />
+          </div>
           <span className="text-2xl font-bold tracking-tight">Monetara</span>
         </Link>
 
@@ -34,32 +29,24 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       {/* Right panel - form */}
       <div className="flex flex-col items-center justify-center p-8 bg-background">
-        {/* Logo grande centrado (visible siempre en mobile, oculto en desktop donde ya está el panel) */}
-        <div className="flex flex-col items-center mb-8 lg:mb-6">
-          {/* Logo completo grande */}
+        {/* Logo grande centrado — siempre visible arriba del formulario */}
+        <div className="flex flex-col items-center mb-8">
           <Link href="/login" className="transition-opacity hover:opacity-80">
-            <Image
-              src="/logo-monetara.png"
-              alt="Logo Monetara"
-              width={180}
-              height={72}
-              className="h-auto w-44 object-contain"
+            <BrandLogo
+              variant="full"
+              width={220}
+              height={88}
+              className="h-auto max-w-[200px] object-contain"
               priority
             />
           </Link>
 
-          {/* Nombre de marca con icono — visible solo en mobile (el desktop tiene el panel izquierdo) */}
+          {/* Icono + texto "Monetara" — solo visible en sm+ (oculto en móvil) */}
           <Link
             href="/login"
-            className="flex items-center gap-1.5 mt-3 lg:hidden transition-opacity hover:opacity-80"
+            className="hidden md:flex items-center gap-1.5 mt-3 lg:hidden transition-opacity hover:opacity-80"
           >
-            <Image
-              src="/logo-monetara-logo.png"
-              alt="Logo Monetara"
-              width={20}
-              height={20}
-              className="h-5 w-5 object-contain"
-            />
+            <BrandLogo variant="icon" width={20} height={20} className="h-5 w-5 object-contain" />
             <span className="text-base font-semibold text-foreground">Monetara</span>
           </Link>
         </div>
