@@ -112,7 +112,7 @@ export function TagsClient({ initialTags }: { initialTags: TagType[] }) {
           {filtered.map((tag) => (
             <div
               key={tag.id}
-              className={`flex items-center gap-2 rounded-full border px-4 py-2 transition-opacity ${
+              className={`flex items-center gap-2 rounded-full border bg-white dark:bg-card px-4 py-2 transition-opacity ${
                 tag.estado === "inactivo" ? "opacity-50" : ""
               }`}
             >

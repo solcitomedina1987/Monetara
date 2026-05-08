@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 const THEME_COLORS: Record<string, string> = {
   light:    "#ffffff",
   dark:     "#0b1221",
-  monetara: "#f4f0e0",
+  monetara: "#f2f1ec",
   system:   "#ffffff",
 };
 
