@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Power, PowerOff, Wallet, Search, Loader2, Star } from "lucide-react";
+import { Plus, Pencil, Power, PowerOff, Wallet, Search, Loader2, Star, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +41,10 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [iconUploading, setIconUploading] = useState(false);
+  const [pendingIconUrl, setPendingIconUrl] = useState<string | null>(null);
+  const iconFileRef = useRef<HTMLInputElement>(null);
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm({
     resolver: zodResolver(accountSchema),
@@ -54,31 +59,68 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
 
   const openCreate = () => {
     setEditingAccount(null);
+    setIconPreview(null);
+    setPendingIconUrl(null);
     reset({ nombre: "", moneda: "ARS", saldo_inicial: 0 });
     setDialogOpen(true);
   };
 
   const openEdit = (account: Account) => {
     setEditingAccount(account);
+    setIconPreview(account.icon_url ?? null);
+    setPendingIconUrl(account.icon_url ?? null);
     reset({ nombre: account.nombre, moneda: account.moneda, saldo_inicial: account.saldo_inicial });
     setDialogOpen(true);
+  };
+
+  const handleIconChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "La imagen debe ser menor a 1 MB" });
+      return;
+    }
+    setIconUploading(true);
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No autenticado");
+      const ext = file.name.split(".").pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("account-icons").upload(path, file, {
+        upsert: true, contentType: file.type,
+      });
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from("account-icons").getPublicUrl(path);
+      const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      setIconPreview(publicUrl);
+      setPendingIconUrl(publicUrl);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error al subir ícono", description: err.message });
+    } finally {
+      setIconUploading(false);
+      if (iconFileRef.current) iconFileRef.current.value = "";
+    }
   };
 
   const onSubmit = (data: any) => {
     startTransition(async () => {
       try {
         if (editingAccount) {
-          await updateAccount(editingAccount.id, data);
+          await updateAccount(editingAccount.id, { ...data, icon_url: pendingIconUrl });
           const refreshed = await getAccountsWithBalance();
           setAccounts(refreshed);
           toast({ title: "Cuenta actualizada" });
         } else {
-          await createAccount(data);
+          await createAccount({ ...data, icon_url: pendingIconUrl });
           const refreshed = await getAccountsWithBalance();
           setAccounts(refreshed);
           toast({ title: "Cuenta creada" });
         }
         setDialogOpen(false);
+        setIconPreview(null);
+        setPendingIconUrl(null);
       } catch (err: any) {
         toast({ variant: "destructive", title: "Error", description: err.message });
       }
@@ -169,8 +211,18 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="rounded-lg bg-primary/10 p-2">
-                      <Wallet className="h-5 w-5 text-primary" />
+                    <div className="rounded-full bg-primary/10 p-0.5 overflow-hidden h-10 w-10 flex items-center justify-center shrink-0">
+                      {account.icon_url ? (
+                        <Image
+                          src={account.icon_url}
+                          alt={account.nombre}
+                          width={40}
+                          height={40}
+                          className="object-cover rounded-full h-10 w-10"
+                        />
+                      ) : (
+                        <Wallet className="h-5 w-5 text-primary" />
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -242,6 +294,47 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {/* Icon upload */}
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center overflow-hidden border-2 border-dashed border-border">
+                  {iconPreview ? (
+                    <Image src={iconPreview} alt="Ícono" width={64} height={64} className="object-cover h-full w-full rounded-full" />
+                  ) : (
+                    <Wallet className="h-7 w-7 text-muted-foreground" />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => iconFileRef.current?.click()}
+                  disabled={iconUploading}
+                  className="absolute -bottom-1 -right-1 rounded-full bg-primary text-primary-foreground p-1 shadow-md hover:bg-primary/90 transition-colors"
+                >
+                  {iconUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+                </button>
+                <input
+                  ref={iconFileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml"
+                  className="hidden"
+                  onChange={handleIconChange}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Ícono de cuenta</p>
+                <p className="text-xs text-muted-foreground">PNG, JPG o SVG, máx 1 MB</p>
+                {iconPreview && (
+                  <button
+                    type="button"
+                    className="text-xs text-destructive hover:underline mt-1"
+                    onClick={() => { setIconPreview(null); setPendingIconUrl(null); }}
+                  >
+                    Quitar ícono
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="nombre">Nombre</Label>
               <Input id="nombre" placeholder="Ej: Efectivo, Banco Nación..." {...register("nombre")} />

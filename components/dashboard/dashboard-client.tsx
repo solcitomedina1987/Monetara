@@ -33,6 +33,7 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   mes_anterior:    "Mes anterior",
   ultimos_3_meses: "Últimos 3 meses",
   año_actual:      "Año actual",
+  ultimo_año:      "Último año",
   personalizado:   "Período personalizado",
 };
 
@@ -282,6 +283,7 @@ export function DashboardClient({
               <SelectItem value="mes_anterior">Mes anterior</SelectItem>
               <SelectItem value="ultimos_3_meses">Últimos 3 meses</SelectItem>
               <SelectItem value="año_actual">Año actual</SelectItem>
+              <SelectItem value="ultimo_año">Último año</SelectItem>
               <SelectItem value="personalizado">Período personalizado</SelectItem>
             </SelectContent>
           </Select>
@@ -554,6 +556,7 @@ export function DashboardClient({
                   <SelectItem value="mes_anterior">Mes anterior</SelectItem>
                   <SelectItem value="ultimos_3_meses">Últimos 3 meses</SelectItem>
                   <SelectItem value="año_actual">Año actual</SelectItem>
+                  <SelectItem value="ultimo_año">Último año</SelectItem>
                 </SelectContent>
               </Select>
             </div>

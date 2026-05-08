@@ -20,6 +20,7 @@ export interface Account {
   saldo_inicial: number;
   estado: AccountStatus;
   is_default: boolean;
+  icon_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +97,7 @@ export type DashboardPeriod =
   | "mes_anterior"
   | "ultimos_3_meses"
   | "año_actual"
+  | "ultimo_año"
   | "personalizado";
 
 export interface TransactionFilters {

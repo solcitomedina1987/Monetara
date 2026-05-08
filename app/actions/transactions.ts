@@ -21,6 +21,9 @@ function getPeriodDates(filters?: TransactionFilters): [string, string] | null {
   if (filters.periodo === "año_actual") {
     return [format(startOfYear(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
   }
+  if (filters.periodo === "ultimo_año") {
+    return [format(subMonths(now, 12), "yyyy-MM-dd"), format(now, "yyyy-MM-dd")];
+  }
   if (filters.periodo === "personalizado" && filters.fechaDesde && filters.fechaHasta) {
     return [filters.fechaDesde, filters.fechaHasta];
   }

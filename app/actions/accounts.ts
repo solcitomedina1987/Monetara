@@ -29,6 +29,7 @@ export async function createAccount(payload: {
   nombre: string;
   moneda: string;
   saldo_inicial: number;
+  icon_url?: string | null;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
