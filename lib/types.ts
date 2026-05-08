@@ -7,6 +7,7 @@ export interface Profile {
   nombre: string;
   apellido: string;
   email: string;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -18,6 +19,7 @@ export interface Account {
   moneda: string;
   saldo_inicial: number;
   estado: AccountStatus;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -26,10 +28,10 @@ export interface Category {
   id: string;
   user_id: string;
   nombre: string;
+  icono: string | null;
   estado: CategoryStatus;
   created_at: string;
   updated_at: string;
-  tags?: Tag[];
 }
 
 export interface Tag {
@@ -41,10 +43,6 @@ export interface Tag {
   updated_at: string;
 }
 
-export interface CategoryTag {
-  category_id: string;
-  tag_id: string;
-}
 
 export interface Transaction {
   id: string;
@@ -93,14 +91,25 @@ export const CURRENCIES: Currency[] = [
   { code: "CAD", name: "Dólar Canadiense", symbol: "CA$" },
 ];
 
+export type DashboardPeriod =
+  | "mes_actual"
+  | "mes_anterior"
+  | "ultimos_3_meses"
+  | "año_actual"
+  | "personalizado";
+
 export interface TransactionFilters {
   tipo?: TransactionType | "todos";
-  periodo?: "mes_actual" | "mes_anterior" | "personalizado";
+  periodo?: DashboardPeriod;
   fechaDesde?: string;
   fechaHasta?: string;
   account_id?: string;
   category_id?: string;
   tag_ids?: string[];
+}
+
+export interface AccountWithBalance extends Account {
+  saldo_actual: number;
 }
 
 export interface DailySummary {

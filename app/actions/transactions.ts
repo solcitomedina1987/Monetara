@@ -3,7 +3,29 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Transaction, TransactionWithRelations, TransactionFilters } from "@/lib/types";
-import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
+import { startOfMonth, endOfMonth, subMonths, startOfYear, format } from "date-fns";
+
+/** Returns [fechaDesde, fechaHasta] for the given filter period. */
+function getPeriodDates(filters?: TransactionFilters): [string, string] | null {
+  const now = new Date();
+  if (!filters?.periodo || filters.periodo === "mes_actual") {
+    return [format(startOfMonth(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
+  }
+  if (filters.periodo === "mes_anterior") {
+    const last = subMonths(now, 1);
+    return [format(startOfMonth(last), "yyyy-MM-dd"), format(endOfMonth(last), "yyyy-MM-dd")];
+  }
+  if (filters.periodo === "ultimos_3_meses") {
+    return [format(startOfMonth(subMonths(now, 2)), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
+  }
+  if (filters.periodo === "año_actual") {
+    return [format(startOfYear(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
+  }
+  if (filters.periodo === "personalizado" && filters.fechaDesde && filters.fechaHasta) {
+    return [filters.fechaDesde, filters.fechaHasta];
+  }
+  return null;
+}
 
 export async function getTransactions(filters?: TransactionFilters): Promise<TransactionWithRelations[]> {
   const supabase = await createClient();
@@ -32,19 +54,9 @@ export async function getTransactions(filters?: TransactionFilters): Promise<Tra
     query = query.eq("category_id", filters.category_id);
   }
 
-  // Period filters
-  const now = new Date();
-  if (filters?.periodo === "mes_actual") {
-    query = query
-      .gte("fecha", format(startOfMonth(now), "yyyy-MM-dd"))
-      .lte("fecha", format(endOfMonth(now), "yyyy-MM-dd"));
-  } else if (filters?.periodo === "mes_anterior") {
-    const lastMonth = subMonths(now, 1);
-    query = query
-      .gte("fecha", format(startOfMonth(lastMonth), "yyyy-MM-dd"))
-      .lte("fecha", format(endOfMonth(lastMonth), "yyyy-MM-dd"));
-  } else if (filters?.periodo === "personalizado" && filters.fechaDesde && filters.fechaHasta) {
-    query = query.gte("fecha", filters.fechaDesde).lte("fecha", filters.fechaHasta);
+  const dates = getPeriodDates(filters);
+  if (dates) {
+    query = query.gte("fecha", dates[0]).lte("fecha", dates[1]);
   }
 
   const { data, error } = await query;
@@ -142,58 +154,152 @@ export async function deleteTransaction(id: string) {
   revalidatePath("/dashboard");
 }
 
-export async function getDashboardStats(accountId?: string) {
+export async function getDashboardStats(filters?: TransactionFilters) {
   const supabase = await createClient();
-  const now = new Date();
-  const firstDay = format(startOfMonth(now), "yyyy-MM-dd");
-  const lastDay = format(endOfMonth(now), "yyyy-MM-dd");
+
+  const dates = getPeriodDates(filters) ?? getPeriodDates({ periodo: "mes_actual" })!;
 
   let query = supabase
     .from("transactions")
     .select("monto, tipo")
-    .gte("fecha", firstDay)
-    .lte("fecha", lastDay);
+    .gte("fecha", dates[0])
+    .lte("fecha", dates[1]);
 
-  if (accountId) {
-    query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
+  if (filters?.account_id) {
+    query = query.or(`account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`);
   }
 
   const { data, error } = await query;
   if (error) throw error;
 
   const ingresos = data?.filter((t) => t.tipo === "ingreso").reduce((s, t) => s + Number(t.monto), 0) ?? 0;
-  const gastos = data?.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0) ?? 0;
+  const gastos   = data?.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0) ?? 0;
 
   return { ingresos, gastos, balance: ingresos - gastos };
 }
 
-export async function getExpensesByCategory(accountId?: string) {
+/**
+ * Saldo real total:
+ * - Con accountId → get_account_balance(id):
+ *   saldo_inicial + ingresos − gastos ± transferencias de esa cuenta.
+ * - Sin accountId → suma get_account_balance de TODAS las cuentas del usuario,
+ *   que es exactamente la sumatoria de los saldos individuales.
+ */
+export async function getTotalBalance(accountId?: string): Promise<number> {
+  const supabase = await createClient();
+
+  if (accountId) {
+    const { data, error } = await supabase.rpc("get_account_balance", {
+      p_account_id: accountId,
+    });
+    if (error) throw error;
+    return Math.round(Number(data ?? 0) * 100) / 100;
+  }
+
+  // Global: sumar el saldo real de cada cuenta
+  const { data: accounts, error: accErr } = await supabase
+    .from("accounts")
+    .select("id");
+  if (accErr) throw accErr;
+  if (!accounts?.length) return 0;
+
+  const balances = await Promise.all(
+    accounts.map(async (a) => {
+      const { data, error } = await supabase.rpc("get_account_balance", {
+        p_account_id: a.id,
+      });
+      if (error) throw error;
+      return Number(data ?? 0);
+    })
+  );
+
+  const total = balances.reduce((sum, b) => sum + b, 0);
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Returns the running balance at the START of the given filter period.
+ * = saldo_inicial of relevant accounts + all transactions before the period start.
+ */
+export async function getBalanceBeforePeriod(filters?: TransactionFilters): Promise<number> {
   const supabase = await createClient();
   const now = new Date();
-  const firstDay = format(startOfMonth(now), "yyyy-MM-dd");
-  const lastDay = format(endOfMonth(now), "yyyy-MM-dd");
+
+  const dates = getPeriodDates(filters) ?? getPeriodDates({ periodo: "mes_actual" })!;
+  const periodStart = dates[0];
+
+  // Fetch saldo_inicial for relevant account(s)
+  let accountsQuery = supabase.from("accounts").select("id, saldo_inicial");
+  if (filters?.account_id) {
+    accountsQuery = accountsQuery.eq("id", filters.account_id);
+  }
+  const { data: accounts } = await accountsQuery;
+  if (!accounts || accounts.length === 0) return 0;
+
+  const accountIds = new Set(accounts.map((a) => a.id));
+  const totalSaldoInicial = accounts.reduce((s, a) => s + Number(a.saldo_inicial), 0);
+
+  // periodStart is always defined now (getPeriodDates always returns dates)
+
+  // Sum all transactions strictly before the period start
+  let txQuery = supabase
+    .from("transactions")
+    .select("monto, tipo, account_id, to_account_id")
+    .lt("fecha", periodStart);
+
+  if (filters?.account_id) {
+    txQuery = txQuery.or(
+      `account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`
+    );
+  }
+
+  const { data: txs } = await txQuery;
+  if (!txs) return totalSaldoInicial;
+
+  let delta = 0;
+  for (const t of txs) {
+    if (t.tipo === "ingreso" && accountIds.has(t.account_id)) {
+      delta += Number(t.monto);
+    } else if (t.tipo === "gasto" && accountIds.has(t.account_id)) {
+      delta -= Number(t.monto);
+    } else if (t.tipo === "transferencia") {
+      if (accountIds.has(t.account_id)) delta -= Number(t.monto);
+      if (accountIds.has(t.to_account_id)) delta += Number(t.monto);
+    }
+  }
+
+  return totalSaldoInicial + delta;
+}
+
+export async function getExpensesByCategory(filters?: TransactionFilters) {
+  const supabase = await createClient();
+
+  const dates = getPeriodDates(filters) ?? getPeriodDates({ periodo: "mes_actual" })!;
 
   let query = supabase
     .from("transactions")
-    .select("monto, category:categories(nombre)")
+    .select("monto, category_id, category:categories(nombre)")
     .eq("tipo", "gasto")
-    .gte("fecha", firstDay)
-    .lte("fecha", lastDay);
+    .gte("fecha", dates[0])
+    .lte("fecha", dates[1]);
 
-  if (accountId) {
-    query = query.eq("account_id", accountId);
+  if (filters?.account_id) {
+    query = query.eq("account_id", filters.account_id);
   }
 
   const { data, error } = await query;
   if (error) throw error;
 
-  const grouped: Record<string, number> = {};
+  const grouped: Record<string, { value: number; category_id: string | null }> = {};
   data?.forEach((t: any) => {
     const name = t.category?.nombre ?? "Sin categoría";
-    grouped[name] = (grouped[name] ?? 0) + Number(t.monto);
+    if (!grouped[name]) {
+      grouped[name] = { value: 0, category_id: t.category_id ?? null };
+    }
+    grouped[name].value += Number(t.monto);
   });
 
   return Object.entries(grouped)
-    .map(([name, value]) => ({ name, value }))
+    .map(([name, { value, category_id }]) => ({ name, value, category_id }))
     .sort((a, b) => b.value - a.value);
 }

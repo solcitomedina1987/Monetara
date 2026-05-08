@@ -2,73 +2,54 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { Category, Tag } from "@/lib/types";
+import type { Category } from "@/lib/types";
 
 export async function getCategories() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
-    .select(`*, tags:category_tags(tag:tags(*))`)
+    .select("*")
     .order("nombre");
   if (error) throw error;
-  return data.map((c: any) => ({
-    ...c,
-    tags: c.tags?.map((t: any) => t.tag) ?? [],
-  })) as Category[];
+  return data as Category[];
 }
 
 export async function getActiveCategories() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
-    .select(`*, tags:category_tags(tag:tags(*))`)
+    .select("*")
     .eq("estado", "activo")
     .order("nombre");
   if (error) throw error;
-  return data.map((c: any) => ({
-    ...c,
-    tags: c.tags?.map((t: any) => t.tag) ?? [],
-  })) as Category[];
+  return data as Category[];
 }
 
-export async function createCategory(nombre: string, tagIds: string[] = []) {
+export async function createCategory(nombre: string, icono?: string | null) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("No autenticado");
 
   const { data: category, error } = await supabase
     .from("categories")
-    .insert({ nombre, user_id: user.id })
+    .insert({ nombre, user_id: user.id, icono: icono ?? null })
     .select()
     .single();
   if (error) throw error;
-
-  if (tagIds.length > 0) {
-    await supabase.from("category_tags").insert(
-      tagIds.map((tag_id) => ({ category_id: category.id, tag_id }))
-    );
-  }
 
   revalidatePath("/categories");
   return category as Category;
 }
 
-export async function updateCategory(id: string, nombre: string, tagIds: string[] = []) {
+export async function updateCategory(id: string, nombre: string, icono?: string | null) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
-    .update({ nombre })
+    .update({ nombre, icono: icono ?? null })
     .eq("id", id)
     .select()
     .single();
   if (error) throw error;
-
-  await supabase.from("category_tags").delete().eq("category_id", id);
-  if (tagIds.length > 0) {
-    await supabase.from("category_tags").insert(
-      tagIds.map((tag_id) => ({ category_id: id, tag_id }))
-    );
-  }
 
   revalidatePath("/categories");
   return data as Category;

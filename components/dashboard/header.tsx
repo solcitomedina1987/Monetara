@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, Moon, Sun, LogOut, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -18,10 +18,24 @@ interface HeaderProps {
   onMenuClick: () => void;
 }
 
-export function Header({ profile, onMenuClick }: HeaderProps) {
+export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(initialProfile);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (data) setProfile(data as Profile);
+    });
+  }, []);
 
   const handleSignOut = async () => {
     setLoading(true);
@@ -31,7 +45,7 @@ export function Header({ profile, onMenuClick }: HeaderProps) {
   };
 
   const initials = profile
-    ? `${profile.nombre[0] ?? ""}${profile.apellido[0] ?? ""}`.toUpperCase()
+    ? `${profile.nombre?.[0] ?? ""}${profile.apellido?.[0] ?? ""}`.toUpperCase()
     : "U";
 
   return (
@@ -57,6 +71,7 @@ export function Header({ profile, onMenuClick }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-9 w-9 rounded-full">
               <Avatar className="h-9 w-9">
+                <AvatarImage src={profile?.avatar_url ?? undefined} />
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">
                   {initials}
                 </AvatarFallback>
@@ -73,12 +88,16 @@ export function Header({ profile, onMenuClick }: HeaderProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/profile")}>
+            <DropdownMenuItem onClick={() => router.push("/perfil")}>
               <User className="mr-2 h-4 w-4" />
               Mi Perfil
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} disabled={loading} className="text-destructive">
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              disabled={loading}
+              className="text-destructive"
+            >
               <LogOut className="mr-2 h-4 w-4" />
               {loading ? "Cerrando sesión..." : "Cerrar Sesión"}
             </DropdownMenuItem>

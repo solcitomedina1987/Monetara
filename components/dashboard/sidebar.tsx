@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle, ArrowLeftRight,
-  Wallet, Tag, FolderOpen, BarChart3, X, TrendingUp,
+  Wallet, Tag, FolderOpen, BarChart3, X, TrendingUp, UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ const navItems = [
   { href: "/categories", label: "Categorías", icon: FolderOpen },
   { href: "/tags", label: "Etiquetas", icon: Tag },
   { href: "/reports", label: "Reportes", icon: BarChart3 },
+  { href: "/perfil", label: "Mi Perfil", icon: UserCircle },
 ];
 
 interface SidebarProps {
@@ -31,7 +32,7 @@ export function Sidebar({ onClose }: SidebarProps) {
       <div className="flex h-16 items-center justify-between px-6 border-b">
         <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg" onClick={onClose}>
           <TrendingUp className="h-6 w-6 text-primary" />
-          <span>Finanzas</span>
+          <span>Monetara</span>
         </Link>
         {onClose && (
           <Button variant="ghost" size="icon" onClick={onClose} className="md:hidden">

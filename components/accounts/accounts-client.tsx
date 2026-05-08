@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Power, PowerOff, Wallet, Search, Loader2 } from "lucide-react";
+import { Plus, Pencil, Power, PowerOff, Wallet, Search, Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
-import { createAccount, updateAccount, deactivateAccount, activateAccount } from "@/app/actions/accounts";
+import { createAccount, updateAccount, deactivateAccount, activateAccount, getAccountsWithBalance, setDefaultAccount, clearDefaultAccount } from "@/app/actions/accounts";
 import { toast } from "@/hooks/use-toast";
-import { CURRENCIES, type Account } from "@/lib/types";
+import { CURRENCIES, type Account, type AccountWithBalance } from "@/lib/types";
 
 const accountSchema = z.object({
   nombre: z.string().min(2, "Mínimo 2 caracteres"),
@@ -30,11 +30,11 @@ const accountSchema = z.object({
 type AccountForm = z.infer<typeof accountSchema>;
 
 interface AccountsClientProps {
-  initialAccounts: Account[];
+  initialAccounts: AccountWithBalance[];
 }
 
 export function AccountsClient({ initialAccounts }: AccountsClientProps) {
-  const [accounts, setAccounts] = useState(initialAccounts);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>(initialAccounts);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"todos" | "activo" | "inactivo">("todos");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -68,12 +68,14 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
     startTransition(async () => {
       try {
         if (editingAccount) {
-          const updated = await updateAccount(editingAccount.id, data);
-          setAccounts((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+          await updateAccount(editingAccount.id, data);
+          const refreshed = await getAccountsWithBalance();
+          setAccounts(refreshed);
           toast({ title: "Cuenta actualizada" });
         } else {
-          const created = await createAccount(data);
-          setAccounts((prev) => [...prev, created]);
+          await createAccount(data);
+          const refreshed = await getAccountsWithBalance();
+          setAccounts(refreshed);
           toast({ title: "Cuenta creada" });
         }
         setDialogOpen(false);
@@ -89,8 +91,27 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
         const updated = account.estado === "activo"
           ? await deactivateAccount(account.id)
           : await activateAccount(account.id);
-        setAccounts((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+        const refreshed = await getAccountsWithBalance();
+        setAccounts(refreshed);
         toast({ title: `Cuenta ${updated.estado === "activo" ? "activada" : "desactivada"}` });
+      } catch (err: any) {
+        toast({ variant: "destructive", title: "Error", description: err.message });
+      }
+    });
+  };
+
+  const toggleDefault = (account: AccountWithBalance) => {
+    startTransition(async () => {
+      try {
+        if (account.is_default) {
+          await clearDefaultAccount();
+          toast({ title: "Cuenta predeterminada quitada" });
+        } else {
+          await setDefaultAccount(account.id);
+          toast({ title: `"${account.nombre}" es ahora la cuenta predeterminada` });
+        }
+        const refreshed = await getAccountsWithBalance();
+        setAccounts(refreshed);
       } catch (err: any) {
         toast({ variant: "destructive", title: "Error", description: err.message });
       }
@@ -152,7 +173,12 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
                       <Wallet className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-base">{account.nombre}</CardTitle>
+                      <div className="flex items-center gap-1.5">
+                        <CardTitle className="text-base">{account.nombre}</CardTitle>
+                        {account.is_default && (
+                          <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">{account.moneda}</p>
                     </div>
                   </div>
@@ -162,14 +188,27 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
-                  {formatCurrency(account.saldo_inicial, account.moneda)}
+                <p className={`text-2xl font-bold ${account.saldo_actual >= 0 ? "" : "text-red-600 dark:text-red-400"}`}>
+                  {formatCurrency(account.saldo_actual, account.moneda)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">Saldo inicial</p>
+                <p className="text-xs text-muted-foreground mt-1">Saldo actual</p>
+                <p className="text-xs text-muted-foreground">
+                  Inicial: {formatCurrency(account.saldo_inicial, account.moneda)}
+                </p>
                 <Separator className="my-3" />
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => openEdit(account)} className="flex-1">
                     <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleDefault(account)}
+                    disabled={isPending}
+                    title={account.is_default ? "Quitar predeterminada" : "Marcar como predeterminada"}
+                    className={account.is_default ? "text-amber-500 hover:text-amber-600 border-amber-300" : ""}
+                  >
+                    <Star className={`h-3.5 w-3.5 ${account.is_default ? "fill-amber-400" : ""}`} />
                   </Button>
                   <Button
                     variant="outline"

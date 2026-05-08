@@ -7,7 +7,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground">
         <div className="flex items-center gap-2 text-2xl font-bold">
           <TrendingUp className="h-8 w-8" />
-          <span>Finanzas</span>
+          <span>Monetara</span>
         </div>
         <div className="space-y-4">
           <blockquote className="text-3xl font-semibold leading-tight">
@@ -18,7 +18,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </p>
         </div>
         <div className="text-sm text-primary-foreground/60">
-          © {new Date().getFullYear()} Finanzas App
+          © {new Date().getFullYear()} Monetara App
         </div>
       </div>
 
@@ -26,7 +26,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="flex flex-col items-center justify-center p-8 bg-background">
         <div className="flex items-center gap-2 text-xl font-bold mb-8 lg:hidden">
           <TrendingUp className="h-6 w-6 text-primary" />
-          <span>Finanzas</span>
+          <span>Monetara</span>
         </div>
         <div className="w-full max-w-md">
           {children}

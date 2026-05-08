@@ -26,3 +26,8 @@ next-env.d.ts
 .DS_Store
 *.pem
 npm-debug.log*
+
+# Data import scripts and files (contain personal financial data)
+supabase/*.csv
+supabase/import_*.sql
+supabase/generate_import*.js

@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Plus, X, Loader2 } from "lucide-react";
+import { NumericFormat } from "react-number-format";
+import { ArrowLeft, Plus, X, Loader2, Search, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createTransaction } from "@/app/actions/transactions";
@@ -21,15 +22,13 @@ import { toast } from "@/hooks/use-toast";
 import { toISODateString } from "@/lib/utils";
 import type { Account, Category, Tag, TransactionType } from "@/lib/types";
 
+// monto is handled separately via NumericFormat + amountValue state
 const schema = z.object({
-  monto: z.coerce.number().positive("Debe ser mayor a 0"),
   account_id: z.string().min(1, "Seleccioná una cuenta"),
   to_account_id: z.string().optional(),
   category_id: z.string().optional(),
   fecha: z.string().min(1, "Seleccioná una fecha"),
   notas: z.string().optional(),
-}).refine((d) => {
-  return true;
 });
 
 type FormData = z.infer<typeof schema>;
@@ -39,68 +38,120 @@ interface Props {
   categories: Category[];
   tags: Tag[];
   defaultTipo: TransactionType;
+  defaultAccountId?: string | null;
 }
 
-export function TransactionFormPage({ accounts, categories: initialCategories, tags: initialTags, defaultTipo }: Props) {
+export function TransactionFormPage({
+  accounts,
+  categories: initialCategories,
+  tags: initialTags,
+  defaultTipo,
+  defaultAccountId,
+}: Props) {
   const router = useRouter();
   const [tipo, setTipo] = useState<TransactionType>(defaultTipo);
   const [categories, setCategories] = useState(initialCategories);
   const [allTags, setAllTags] = useState(initialTags);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
-  const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Category combobox state
+  const [catSearch, setCatSearch] = useState("");
+  const [catOpen, setCatOpen] = useState(false);
+  const [selectedCatId, setSelectedCatId] = useState<string>("");
+  const catInputRef = useRef<HTMLInputElement>(null);
+
+  // Amount raw value (float)
+  const [amountValue, setAmountValue] = useState<number | undefined>(undefined);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
       fecha: toISODateString(new Date()),
-      account_id: accounts[0]?.id ?? "",
+      account_id: defaultAccountId ?? accounts[0]?.id ?? "",
     },
   });
 
-  const handleAddTag = async () => {
-    const name = tagInput.trim();
-    if (!name) return;
-    try {
-      const tag = await upsertTag(name);
-      if (!allTags.find((t) => t.id === tag.id)) setAllTags((prev) => [...prev, tag]);
-      if (!selectedTagIds.includes(tag.id)) setSelectedTagIds((prev) => [...prev, tag.id]);
-      setTagInput("");
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err.message });
-    }
+  const filteredCategories = categories.filter((c) =>
+    c.estado === "activo" &&
+    c.nombre.toLowerCase().includes(catSearch.toLowerCase())
+  );
+  const selectedCat = categories.find((c) => c.id === selectedCatId);
+  const showCreateOption = catSearch.trim().length >= 2 && !filteredCategories.some(
+    (c) => c.nombre.toLowerCase() === catSearch.trim().toLowerCase()
+  );
+
+  const filteredTags = allTags.filter(
+    (t) =>
+      t.estado === "activo" &&
+      t.nombre.toLowerCase().includes(tagInput.toLowerCase()) &&
+      !selectedTagIds.includes(t.id)
+  );
+  const showCreateTag = tagInput.trim().length >= 2 && !allTags.some(
+    (t) => t.nombre.toLowerCase() === tagInput.trim().toLowerCase()
+  );
+
+  const handleSelectCategory = (id: string) => {
+    setSelectedCatId(id);
+    setValue("category_id", id);
+    setCatSearch("");
+    setCatOpen(false);
   };
 
-  const handleCreateCategory = async () => {
-    const name = newCategoryInput.trim();
+  const handleCreateAndSelectCategory = async () => {
+    const name = catSearch.trim();
     if (!name) return;
     try {
       const cat = await createCategory(name);
       setCategories((prev) => [...prev, cat]);
-      setValue("category_id", cat.id);
-      setNewCategoryInput("");
+      handleSelectCategory(cat.id);
       toast({ title: `Categoría "${name}" creada` });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
     }
   };
 
+  const handleAddTag = async (name?: string) => {
+    const tagName = (name ?? tagInput).trim();
+    if (!tagName) return;
+    try {
+      const tag = await upsertTag(tagName);
+      if (!allTags.find((t) => t.id === tag.id)) setAllTags((prev) => [...prev, tag]);
+      if (!selectedTagIds.includes(tag.id)) setSelectedTagIds((prev) => [...prev, tag.id]);
+      setTagInput("");
+      setTagDropdownOpen(false);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err.message });
+    }
+  };
+
   const onSubmit = (data: any) => {
+    if (!amountValue || amountValue <= 0) {
+      toast({ variant: "destructive", title: "Ingresá un monto válido" });
+      return;
+    }
     startTransition(async () => {
       try {
         await createTransaction({
-          monto: data.monto,
+          monto: amountValue,
           tipo,
           account_id: data.account_id,
-          category_id: tipo !== "transferencia" ? (data.category_id || null) : null,
+          category_id: tipo !== "transferencia" ? (selectedCatId || null) : null,
           fecha: data.fecha,
           notas: data.notas || null,
           to_account_id: tipo === "transferencia" ? (data.to_account_id || null) : null,
           tag_ids: selectedTagIds,
         });
         toast({
-          title: tipo === "ingreso" ? "Ingreso registrado" : tipo === "gasto" ? "Gasto registrado" : "Transferencia registrada",
+          title:
+            tipo === "ingreso"
+              ? "Ingreso registrado"
+              : tipo === "gasto"
+              ? "Gasto registrado"
+              : "Transferencia registrada",
           variant: tipo === "ingreso" ? "success" : "default",
         });
         router.push("/transactions");
@@ -129,13 +180,22 @@ export function TransactionFormPage({ accounts, categories: initialCategories, t
         <CardHeader>
           <Tabs value={tipo} onValueChange={(v) => setTipo(v as TransactionType)}>
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="ingreso" className="data-[state=active]:text-green-600 data-[state=active]:bg-green-50 dark:data-[state=active]:bg-green-900/20">
+              <TabsTrigger
+                value="ingreso"
+                className="data-[state=active]:text-green-600 data-[state=active]:bg-green-50 dark:data-[state=active]:bg-green-900/20"
+              >
                 + Ingreso
               </TabsTrigger>
-              <TabsTrigger value="gasto" className="data-[state=active]:text-red-600 data-[state=active]:bg-red-50 dark:data-[state=active]:bg-red-900/20">
+              <TabsTrigger
+                value="gasto"
+                className="data-[state=active]:text-red-600 data-[state=active]:bg-red-50 dark:data-[state=active]:bg-red-900/20"
+              >
                 - Gasto
               </TabsTrigger>
-              <TabsTrigger value="transferencia" className="data-[state=active]:text-blue-600 data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-900/20">
+              <TabsTrigger
+                value="transferencia"
+                className="data-[state=active]:text-blue-600 data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-900/20"
+              >
                 ⇄ Transferencia
               </TabsTrigger>
             </TabsList>
@@ -144,22 +204,27 @@ export function TransactionFormPage({ accounts, categories: initialCategories, t
 
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            {/* Amount */}
+            {/* Amount — NumericFormat with comma/dot support */}
             <div className="space-y-2">
               <Label>Monto</Label>
               <div className="relative">
                 <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-lg font-bold ${tipoColors[tipo]}`}>
                   {tipo === "ingreso" ? "+" : tipo === "gasto" ? "-" : "⇄"}
                 </span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
+                <NumericFormat
+                  customInput={Input}
+                  thousandSeparator="."
+                  decimalSeparator=","
+                  decimalScale={2}
+                  allowNegative={false}
+                  placeholder="0,00"
                   className={`pl-8 text-xl font-bold h-14 ${tipoColors[tipo]}`}
-                  {...register("monto")}
+                  onValueChange={(vals) => setAmountValue(vals.floatValue)}
                 />
               </div>
-              {errors.monto && <p className="text-xs text-destructive">{errors.monto.message}</p>}
+              {amountValue !== undefined && amountValue <= 0 && (
+                <p className="text-xs text-destructive">El monto debe ser mayor a 0</p>
+              )}
             </div>
 
             {/* Account */}
@@ -174,11 +239,15 @@ export function TransactionFormPage({ accounts, categories: initialCategories, t
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.nombre} ({a.moneda})</SelectItem>
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.nombre} ({a.moneda})
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.account_id && <p className="text-xs text-destructive">{errors.account_id.message}</p>}
+              {errors.account_id && (
+                <p className="text-xs text-destructive">{errors.account_id.message}</p>
+              )}
             </div>
 
             {/* Destination account (transfers) */}
@@ -196,69 +265,123 @@ export function TransactionFormPage({ accounts, categories: initialCategories, t
                     {accounts
                       .filter((a) => a.id !== watch("account_id"))
                       .map((a) => (
-                        <SelectItem key={a.id} value={a.id}>{a.nombre} ({a.moneda})</SelectItem>
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.nombre} ({a.moneda})
+                        </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
 
-            {/* Category (not for transfers) */}
+            {/* Category — Combobox with search + create */}
             {tipo !== "transferencia" && (
               <div className="space-y-2">
                 <Label>Categoría</Label>
-                <Select
-                  value={watch("category_id") ?? ""}
-                  onValueChange={(v) => setValue("category_id", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccioná categoría (opcional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Sin categoría</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="O creá una nueva categoría..."
-                    value={newCategoryInput}
-                    onChange={(e) => setNewCategoryInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateCategory(); } }}
-                    className="text-sm"
-                  />
-                  <Button type="button" variant="outline" size="sm" onClick={handleCreateCategory}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCatOpen((o) => !o);
+                      setTimeout(() => catInputRef.current?.focus(), 50);
+                    }}
+                    className="flex h-9 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <span className={selectedCat ? "text-foreground" : "text-muted-foreground"}>
+                      {selectedCat ? selectedCat.nombre : "Seleccioná o buscá una categoría"}
+                    </span>
+                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+                  </button>
+
+                  {catOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                      <div className="flex items-center border-b px-3 py-2 gap-2">
+                        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <input
+                          ref={catInputRef}
+                          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                          placeholder="Buscar categoría..."
+                          value={catSearch}
+                          onChange={(e) => setCatSearch(e.target.value)}
+                          onBlur={() => setTimeout(() => setCatOpen(false), 150)}
+                        />
+                        {catSearch && (
+                          <button type="button" onClick={() => setCatSearch("")}>
+                            <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-52 overflow-y-auto py-1">
+                        {selectedCatId && (
+                          <button
+                            type="button"
+                            className="w-full text-left text-xs px-3 py-2 text-muted-foreground hover:bg-accent"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setSelectedCatId("");
+                              setValue("category_id", "");
+                              setCatOpen(false);
+                            }}
+                          >
+                            Sin categoría
+                          </button>
+                        )}
+                        {filteredCategories.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={`w-full text-left text-sm px-3 py-2 hover:bg-accent transition-colors ${
+                              c.id === selectedCatId ? "bg-accent font-medium" : ""
+                            }`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectCategory(c.id);
+                            }}
+                          >
+                            {c.nombre}
+                          </button>
+                        ))}
+                        {showCreateOption && (
+                          <button
+                            type="button"
+                            className="w-full text-left text-sm px-3 py-2 hover:bg-accent text-primary flex items-center gap-2"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleCreateAndSelectCategory();
+                            }}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Crear categoría "{catSearch.trim()}"
+                          </button>
+                        )}
+                        {filteredCategories.length === 0 && !showCreateOption && (
+                          <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Tags */}
+            {/* Tags — multi-select with search, no initial list */}
             <div className="space-y-2">
-              <Label>Etiquetas</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Escribí una etiqueta..."
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
-                  className="text-sm"
-                />
-                <Button type="button" variant="outline" size="sm" onClick={handleAddTag}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+              <Label>
+                Etiquetas{" "}
+                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
+              </Label>
+
               {selectedTagIds.length > 0 && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {selectedTagIds.map((id) => {
                     const tag = allTags.find((t) => t.id === id);
                     return tag ? (
-                      <Badge key={id} variant="secondary" className="gap-1">
+                      <Badge key={id} variant="secondary" className="gap-1 pl-2.5 pr-1.5">
                         {tag.nombre}
-                        <button type="button" onClick={() => setSelectedTagIds((p) => p.filter((tid) => tid !== id))}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTagIds((p) => p.filter((tid) => tid !== id))}
+                        >
                           <X className="h-3 w-3 hover:text-destructive" />
                         </button>
                       </Badge>
@@ -266,20 +389,56 @@ export function TransactionFormPage({ accounts, categories: initialCategories, t
                   })}
                 </div>
               )}
-              {allTags.filter((t) => !selectedTagIds.includes(t.id)).length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {allTags.filter((t) => !selectedTagIds.includes(t.id)).map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => setSelectedTagIds((p) => [...p, tag.id])}
-                      className="text-xs px-2 py-0.5 rounded-full border hover:bg-accent transition-colors"
-                    >
-                      + {tag.nombre}
-                    </button>
-                  ))}
-                </div>
-              )}
+
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  ref={tagInputRef}
+                  className="flex h-9 w-full rounded-md border bg-background pl-8 pr-3 py-2 text-sm shadow-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+                  placeholder="Buscar o crear etiqueta..."
+                  value={tagInput}
+                  onChange={(e) => { setTagInput(e.target.value); setTagDropdownOpen(true); }}
+                  onFocus={() => setTagDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setTagDropdownOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (tagInput.trim()) handleAddTag();
+                    }
+                  }}
+                />
+                {tagDropdownOpen && tagInput.trim().length > 0 && (
+                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md py-1">
+                    {filteredTags.map((tag) => (
+                      <button
+                        key={tag.id}
+                        className="w-full text-left text-sm px-3 py-2 hover:bg-accent transition-colors"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleAddTag(tag.nombre);
+                        }}
+                      >
+                        {tag.nombre}
+                      </button>
+                    ))}
+                    {showCreateTag && (
+                      <button
+                        className="w-full text-left text-sm px-3 py-2 hover:bg-accent text-primary flex items-center gap-2"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleAddTag();
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Crear etiqueta "{tagInput.trim()}"
+                      </button>
+                    )}
+                    {filteredTags.length === 0 && !showCreateTag && (
+                      <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Date */}
@@ -291,24 +450,43 @@ export function TransactionFormPage({ accounts, categories: initialCategories, t
 
             {/* Notes */}
             <div className="space-y-2">
-              <Label>Notas <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-              <Textarea placeholder="Descripción, referencia..." rows={3} {...register("notas")} />
+              <Label>
+                Notas{" "}
+                <span className="text-muted-foreground font-normal text-xs">(opcional)</span>
+              </Label>
+              <Textarea
+                placeholder="Descripción, referencia..."
+                rows={2}
+                {...register("notas")}
+              />
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => router.back()} className="flex-1">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.back()}
+                className="flex-1"
+              >
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 disabled={isPending}
                 className={`flex-1 ${
-                  tipo === "ingreso" ? "bg-green-600 hover:bg-green-700" :
-                  tipo === "gasto" ? "bg-red-600 hover:bg-red-700" : ""
+                  tipo === "ingreso"
+                    ? "bg-green-600 hover:bg-green-700"
+                    : tipo === "gasto"
+                    ? "bg-red-600 hover:bg-red-700"
+                    : ""
                 }`}
               >
                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {tipo === "ingreso" ? "Registrar Ingreso" : tipo === "gasto" ? "Registrar Gasto" : "Realizar Transferencia"}
+                {tipo === "ingreso"
+                  ? "Registrar Ingreso"
+                  : tipo === "gasto"
+                  ? "Registrar Gasto"
+                  : "Realizar Transferencia"}
               </Button>
             </div>
           </form>

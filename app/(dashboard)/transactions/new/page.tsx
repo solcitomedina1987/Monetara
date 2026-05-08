@@ -1,4 +1,4 @@
-import { getActiveAccounts } from "@/app/actions/accounts";
+import { getActiveAccounts, getDefaultAccount } from "@/app/actions/accounts";
 import { getActiveCategories } from "@/app/actions/categories";
 import { getActiveTags } from "@/app/actions/tags";
 import { TransactionFormPage } from "@/components/transactions/transaction-form-page";
@@ -9,10 +9,11 @@ interface Props {
 
 export default async function NewTransactionPage({ searchParams }: Props) {
   const params = await searchParams;
-  const [accounts, categories, tags] = await Promise.all([
+  const [accounts, categories, tags, defaultAccount] = await Promise.all([
     getActiveAccounts(),
     getActiveCategories(),
     getActiveTags(),
+    getDefaultAccount(),
   ]);
 
   return (
@@ -21,6 +22,7 @@ export default async function NewTransactionPage({ searchParams }: Props) {
       categories={categories}
       tags={tags}
       defaultTipo={(params.tipo as any) ?? "gasto"}
+      defaultAccountId={defaultAccount?.id ?? null}
     />
   );
 }

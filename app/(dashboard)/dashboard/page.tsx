@@ -1,15 +1,18 @@
 import { Suspense } from "react";
-import { getDashboardStats, getExpensesByCategory, getTransactions } from "@/app/actions/transactions";
-import { getActiveAccounts } from "@/app/actions/accounts";
+import { getDashboardStats, getExpensesByCategory, getTransactions, getTotalBalance } from "@/app/actions/transactions";
+import { getActiveAccounts, getDefaultAccount } from "@/app/actions/accounts";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default async function DashboardPage() {
-  const [accounts, stats, expensesByCategory, recentTransactions] = await Promise.all([
+  const initialFilters = { periodo: "mes_actual" as const };
+  const [accounts, stats, expensesByCategory, recentTransactions, totalBalance, defaultAccount] = await Promise.all([
     getActiveAccounts(),
-    getDashboardStats(),
-    getExpensesByCategory(),
-    getTransactions({ periodo: "mes_actual" }),
+    getDashboardStats(initialFilters),
+    getExpensesByCategory(initialFilters),
+    getTransactions(initialFilters),
+    getTotalBalance(),
+    getDefaultAccount(),
   ]);
 
   return (
@@ -19,6 +22,8 @@ export default async function DashboardPage() {
         initialStats={stats}
         initialExpensesByCategory={expensesByCategory}
         initialTransactions={recentTransactions}
+        initialTotalBalance={totalBalance}
+        defaultAccountId={defaultAccount?.id ?? null}
       />
     </Suspense>
   );

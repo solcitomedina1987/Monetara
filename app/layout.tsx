@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Finanzas Personal | Gestión de Ingresos y Egresos",
+  title: "Monetara | Gestión de Finanzas Personales",
   description: "Controlá tus ingresos y egresos de forma simple y eficiente.",
 };
 

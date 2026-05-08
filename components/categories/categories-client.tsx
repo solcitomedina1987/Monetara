@@ -4,39 +4,62 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, PowerOff, Power, FolderOpen, Search, X, Loader2, AlertTriangle } from "lucide-react";
+import * as LucideIcons from "lucide-react";
+import {
+  Plus, Pencil, PowerOff, FolderOpen, Search, Loader2, AlertTriangle, Smile, Power,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import {
   createCategory, updateCategory, deactivateCategory, getCategoryTransactionCount,
 } from "@/app/actions/categories";
-import { upsertTag } from "@/app/actions/tags";
 import { toast } from "@/hooks/use-toast";
-import type { Category, Tag } from "@/lib/types";
+import type { Category } from "@/lib/types";
+
+const CATEGORY_ICONS = [
+  "Utensils", "UtensilsCrossed", "Coffee", "Pizza", "Apple", "Sandwich", "IceCream2", "Wine",
+  "ShoppingCart", "ShoppingBag", "Store", "Tag",
+  "Car", "Bus", "Train", "Bike", "Plane", "Fuel", "Taxi",
+  "Home", "Building2", "Sofa", "Lightbulb", "Wrench", "Hammer", "Drill", "Trash2",
+  "Heart", "Activity", "Stethoscope", "Pill", "Cross", "Ambulance",
+  "GraduationCap", "BookOpen", "School", "Book", "Pencil",
+  "Shirt", "Footprints", "Scissors",
+  "Gamepad2", "Music", "Film", "Tv", "Camera", "Headphones", "Ticket",
+  "Smartphone", "Laptop", "Monitor", "Cpu", "Wifi",
+  "Dumbbell", "Trophy", "PersonStanding", "Wind",
+  "DollarSign", "CreditCard", "Wallet", "PiggyBank", "Banknote", "Receipt",
+  "TrendingUp", "TrendingDown", "ArrowLeftRight",
+  "Gift", "Package", "Star", "Globe", "MapPin",
+  "Users", "User", "Baby", "Dog", "Cat",
+  "Palette", "Leaf", "TreePine", "Flower",
+  "Zap", "Sun", "Moon", "Cloud", "Umbrella",
+  "Briefcase", "Landmark", "Building",
+];
+
+function DynamicIcon({ name, className }: { name: string | null | undefined; className?: string }) {
+  const cls = className ?? "h-3.5 w-3.5";
+  if (!name) return <FolderOpen className={cls} />;
+  const IconComponent = (LucideIcons as any)[name] as React.FC<{ className?: string }>;
+  if (!IconComponent) return <FolderOpen className={cls} />;
+  return <IconComponent className={cls} />;
+}
 
 const schema = z.object({ nombre: z.string().min(2, "Mínimo 2 caracteres") });
 type FormData = z.infer<typeof schema>;
 
-interface CategoriesClientProps {
-  initialCategories: Category[];
-  availableTags: Tag[];
-}
-
-export function CategoriesClient({ initialCategories, availableTags }: CategoriesClientProps) {
+export function CategoriesClient({ initialCategories }: { initialCategories: Category[] }) {
   const [categories, setCategories] = useState(initialCategories);
-  const [allTags, setAllTags] = useState(availableTags);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  const [iconSearch, setIconSearch] = useState("");
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deactivatingCategory, setDeactivatingCategory] = useState<Category | null>(null);
   const [deactivateStats, setDeactivateStats] = useState<{ ingresos: number; gastos: number } | null>(null);
@@ -50,59 +73,36 @@ export function CategoriesClient({ initialCategories, availableTags }: Categorie
     c.nombre.toLowerCase().includes(search.toLowerCase())
   );
 
+  const filteredIcons = CATEGORY_ICONS.filter((icon) =>
+    icon.toLowerCase().includes(iconSearch.toLowerCase())
+  );
+
   const openCreate = () => {
     setEditingCategory(null);
-    setSelectedTagIds([]);
+    setSelectedIcon(null);
+    setIconSearch("");
     reset({ nombre: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (cat: Category) => {
     setEditingCategory(cat);
-    setSelectedTagIds(cat.tags?.map((t) => t.id) ?? []);
+    setSelectedIcon(cat.icono ?? null);
+    setIconSearch("");
     reset({ nombre: cat.nombre });
     setDialogOpen(true);
-  };
-
-  const handleAddTag = async () => {
-    const name = tagInput.trim();
-    if (!name) return;
-
-    const existing = allTags.find((t) => t.nombre.toLowerCase() === name.toLowerCase());
-    if (existing) {
-      if (!selectedTagIds.includes(existing.id)) {
-        setSelectedTagIds((prev) => [...prev, existing.id]);
-      }
-      setTagInput("");
-      return;
-    }
-
-    try {
-      const newTag = await upsertTag(name);
-      setAllTags((prev) => [...prev, newTag]);
-      setSelectedTagIds((prev) => [...prev, newTag.id]);
-      setTagInput("");
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err.message });
-    }
   };
 
   const onSubmit = (data: FormData) => {
     startTransition(async () => {
       try {
         if (editingCategory) {
-          const updated = await updateCategory(editingCategory.id, data.nombre, selectedTagIds);
-          setCategories((prev) => prev.map((c) => c.id === updated.id ? {
-            ...updated,
-            tags: allTags.filter((t) => selectedTagIds.includes(t.id)),
-          } : c));
+          const updated = await updateCategory(editingCategory.id, data.nombre, selectedIcon);
+          setCategories((prev) => prev.map((c) => c.id === updated.id ? updated : c));
           toast({ title: "Categoría actualizada" });
         } else {
-          const created = await createCategory(data.nombre, selectedTagIds);
-          setCategories((prev) => [...prev, {
-            ...created,
-            tags: allTags.filter((t) => selectedTagIds.includes(t.id)),
-          }]);
+          const created = await createCategory(data.nombre, selectedIcon);
+          setCategories((prev) => [...prev, created]);
           toast({ title: "Categoría creada" });
         }
         setDialogOpen(false);
@@ -119,13 +119,28 @@ export function CategoriesClient({ initialCategories, availableTags }: Categorie
     setDeactivateDialogOpen(true);
   };
 
+  const reactivate = (cat: Category) => {
+    startTransition(async () => {
+      try {
+        await updateCategory(cat.id, cat.nombre, cat.icono);
+        // Re-fetch via optimistic update
+        const supabase = (await import("@/lib/supabase/client")).createClient();
+        await supabase.from("categories").update({ estado: "activo" }).eq("id", cat.id);
+        setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, estado: "activo" as const } : c));
+        toast({ title: "Categoría activada" });
+      } catch (err: any) {
+        toast({ variant: "destructive", title: "Error", description: err.message });
+      }
+    });
+  };
+
   const confirmDeactivate = () => {
     if (!deactivatingCategory) return;
     startTransition(async () => {
       try {
         await deactivateCategory(deactivatingCategory.id);
         setCategories((prev) => prev.map((c) =>
-          c.id === deactivatingCategory.id ? { ...c, estado: "inactivo" } : c
+          c.id === deactivatingCategory.id ? { ...c, estado: "inactivo" as const } : c
         ));
         toast({ title: "Categoría desactivada" });
         setDeactivateDialogOpen(false);
@@ -167,52 +182,60 @@ export function CategoriesClient({ initialCategories, availableTags }: Categorie
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-wrap gap-3">
           {filtered.map((cat) => (
-            <Card key={cat.id} className={cat.estado === "inactivo" ? "opacity-60" : ""}>
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <FolderOpen className="h-4 w-4 text-primary" />
-                    <CardTitle className="text-sm">{cat.nombre}</CardTitle>
-                  </div>
-                  <Badge variant={cat.estado === "activo" ? "success" : "secondary"} className="text-xs">
-                    {cat.estado}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1 mb-3 min-h-6">
-                  {cat.tags?.map((tag) => (
-                    <Badge key={tag.id} variant="outline" className="text-xs">{tag.nombre}</Badge>
-                  ))}
-                  {(!cat.tags || cat.tags.length === 0) && (
-                    <span className="text-xs text-muted-foreground">Sin etiquetas</span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(cat)} className="flex-1">
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                  </Button>
-                  {cat.estado === "activo" && (
-                    <Button
-                      variant="outline" size="sm"
-                      onClick={() => openDeactivate(cat)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <PowerOff className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <div
+              key={cat.id}
+              className={`flex items-center gap-2 rounded-full border px-4 py-2 transition-opacity ${
+                cat.estado === "inactivo" ? "opacity-50" : ""
+              }`}
+            >
+              <span className="text-primary">
+                <DynamicIcon name={cat.icono} className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-sm font-medium">{cat.nombre}</span>
+              <Badge
+                variant={cat.estado === "activo" ? "success" : "secondary"}
+                className="text-xs px-1.5 py-0"
+              >
+                {cat.estado}
+              </Badge>
+              <div className="flex gap-1 ml-1">
+                <button
+                  onClick={() => openEdit(cat)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Editar"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                {cat.estado === "activo" ? (
+                  <button
+                    onClick={() => openDeactivate(cat)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    disabled={isPending}
+                    title="Desactivar"
+                  >
+                    <PowerOff className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => reactivate(cat)}
+                    className="text-muted-foreground hover:text-green-600 transition-colors"
+                    disabled={isPending}
+                    title="Activar"
+                  >
+                    <Power className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingCategory ? "Editar Categoría" : "Nueva Categoría"}</DialogTitle>
           </DialogHeader>
@@ -224,53 +247,54 @@ export function CategoriesClient({ initialCategories, availableTags }: Categorie
             </div>
 
             <div className="space-y-2">
-              <Label>Etiquetas</Label>
-              <div className="flex gap-2">
+              <Label className="flex items-center gap-2">
+                Ícono
+                {selectedIcon && (
+                  <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                    <DynamicIcon name={selectedIcon} className="h-3.5 w-3.5" />
+                    {selectedIcon}
+                    <button
+                      type="button"
+                      className="text-destructive hover:underline ml-1"
+                      onClick={() => setSelectedIcon(null)}
+                    >
+                      quitar
+                    </button>
+                  </span>
+                )}
+              </Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Escribí una etiqueta y presioná Enter"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
+                  placeholder="Buscar ícono..."
+                  value={iconSearch}
+                  onChange={(e) => setIconSearch(e.target.value)}
+                  className="pl-8 h-8 text-sm"
                 />
-                <Button type="button" variant="outline" size="sm" onClick={handleAddTag}>
-                  <Plus className="h-4 w-4" />
-                </Button>
               </div>
-              <div className="flex flex-wrap gap-1">
-                {selectedTagIds.map((tagId) => {
-                  const tag = allTags.find((t) => t.id === tagId);
-                  if (!tag) return null;
+              <div className="grid grid-cols-9 gap-1.5 max-h-44 overflow-y-auto rounded-md border p-2 bg-muted/30">
+                {filteredIcons.map((iconName) => {
+                  const isSelected = selectedIcon === iconName;
                   return (
-                    <Badge key={tagId} variant="secondary" className="gap-1">
-                      {tag.nombre}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTagIds((prev) => prev.filter((id) => id !== tagId))}
-                        className="hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
+                    <button
+                      key={iconName}
+                      type="button"
+                      title={iconName}
+                      onClick={() => setSelectedIcon(isSelected ? null : iconName)}
+                      className={`flex items-center justify-center rounded-md p-2 transition-colors hover:bg-accent ${
+                        isSelected ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""
+                      }`}
+                    >
+                      <DynamicIcon name={iconName} className="h-4 w-4" />
+                    </button>
                   );
                 })}
-              </div>
-              {allTags.filter((t) => !selectedTagIds.includes(t.id)).length > 0 && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Etiquetas existentes:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {allTags.filter((t) => !selectedTagIds.includes(t.id)).map((tag) => (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        onClick={() => setSelectedTagIds((prev) => [...prev, tag.id])}
-                        className="text-xs px-2 py-0.5 rounded-md border hover:bg-accent transition-colors"
-                      >
-                        + {tag.nombre}
-                      </button>
-                    ))}
+                {filteredIcons.length === 0 && (
+                  <div className="col-span-9 flex items-center justify-center py-4 text-xs text-muted-foreground">
+                    <Smile className="h-4 w-4 mr-1" /> Sin resultados
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <DialogFooter>
@@ -284,7 +308,7 @@ export function CategoriesClient({ initialCategories, availableTags }: Categorie
         </DialogContent>
       </Dialog>
 
-      {/* Deactivate confirmation dialog */}
+      {/* Deactivate confirmation */}
       <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
         <DialogContent>
           <DialogHeader>

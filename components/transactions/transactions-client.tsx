@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useTransition, useRef } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import * as LucideIcons from "lucide-react";
 import {
   Plus, Filter, Download, Trash2, Pencil, ArrowUpCircle,
   ArrowDownCircle, ArrowLeftRight, ChevronDown, X, Loader2,
+  Tag as TagIcon, FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,33 +22,53 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { getTransactions, deleteTransaction } from "@/app/actions/transactions";
+import { getTransactions, deleteTransaction, getBalanceBeforePeriod } from "@/app/actions/transactions";
+import { ImportTransactionsDialog } from "./import-transactions-dialog";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, toISODateString } from "@/lib/utils";
 import { exportToPDF, exportToExcel, exportToCSV } from "@/lib/export";
 import type { Account, Category, Tag, TransactionWithRelations, TransactionFilters } from "@/lib/types";
+
+function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
+  const cls = className ?? "h-3.5 w-3.5";
+  if (!iconName) return <FolderOpen className={cls} />;
+  const IconComponent = (LucideIcons as any)[iconName] as React.FC<{ className?: string }>;
+  if (!IconComponent) return <FolderOpen className={cls} />;
+  return <IconComponent className={cls} />;
+}
 
 interface Props {
   initialTransactions: TransactionWithRelations[];
   accounts: Account[];
   categories: Category[];
   tags: Tag[];
+  initialStartingBalance: number;
+  initialFilters?: TransactionFilters;
 }
 
-export function TransactionsClient({ initialTransactions, accounts, categories, tags }: Props) {
+export function TransactionsClient({ initialTransactions, accounts, categories, tags, initialStartingBalance, initialFilters }: Props) {
   const [transactions, setTransactions] = useState(initialTransactions);
-  const [filters, setFilters] = useState<TransactionFilters>({ periodo: "mes_actual" });
+  const [filters, setFilters] = useState<TransactionFilters>(initialFilters ?? { periodo: "mes_actual" });
   const [showFilters, setShowFilters] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(false);
+  const [startingBalance, setStartingBalance] = useState(initialStartingBalance);
+  const [tagSearch, setTagSearch] = useState("");
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const applyFilters = useCallback(async (newFilters: TransactionFilters) => {
     setLoading(true);
     try {
-      const data = await getTransactions(newFilters);
+      const [data, newStartingBalance] = await Promise.all([
+        getTransactions(newFilters),
+        getBalanceBeforePeriod(newFilters),
+      ]);
       setTransactions(data);
       setFilters(newFilters);
+      setStartingBalance(newStartingBalance);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
     } finally {
@@ -67,7 +89,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
     });
   };
 
-  // Group by day
+  // Group by day (descending for display)
   const byDay = transactions.reduce((acc, t) => {
     if (!acc[t.fecha]) acc[t.fecha] = [];
     acc[t.fecha].push(t);
@@ -78,6 +100,37 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
 
   const totalIngresos = transactions.filter((t) => t.tipo === "ingreso").reduce((s, t) => s + Number(t.monto), 0);
   const totalGastos = transactions.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0);
+
+  // Compute cumulative running balance per day (oldest → newest)
+  // Each entry: balance at the END of that day
+  const selectedAccountId = filters.account_id;
+  const daysAscending = [...sortedDays].reverse(); // oldest first
+
+  let running = startingBalance;
+  const dayEndBalance: Record<string, number> = {};
+  for (const day of daysAscending) {
+    const dayTxs = byDay[day];
+    // Sort transactions within the day by created_at ascending
+    const sorted = [...dayTxs].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    for (const t of sorted) {
+      if (t.tipo === "ingreso") {
+        running += Number(t.monto);
+      } else if (t.tipo === "gasto") {
+        running -= Number(t.monto);
+      } else if (t.tipo === "transferencia") {
+        if (selectedAccountId) {
+          // Single account view: determine direction relative to selected account
+          if (t.account_id === selectedAccountId) {
+            running -= Number(t.monto); // debit from selected account
+          } else {
+            running += Number(t.monto); // credit to selected account
+          }
+        }
+        // All-accounts view: transfer is a wash (net zero), skip
+      }
+    }
+    dayEndBalance[day] = running;
+  }
 
   return (
     <div className="space-y-6">
@@ -92,6 +145,10 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
             <Filter className="h-4 w-4 mr-2" />
             Filtros
             {showFilters ? <ChevronDown className="h-4 w-4 ml-1 rotate-180" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+            <Download className="h-4 w-4 mr-2 rotate-180" />
+            Importar
           </Button>
           <Link href="/transactions/new">
             <Button size="sm">
@@ -197,33 +254,75 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
               </div>
             </div>
 
-            {/* Tag filters */}
+            {/* Tag filters — searchable */}
             {tags.length > 0 && (
               <div className="mt-4">
                 <Label className="text-xs">Etiquetas</Label>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {tags.map((tag) => {
-                    const selected = filters.tag_ids?.includes(tag.id);
-                    return (
-                      <button
-                        key={tag.id}
-                        onClick={() => {
-                          const current = filters.tag_ids ?? [];
-                          const newIds = selected
-                            ? current.filter((id) => id !== tag.id)
-                            : [...current, tag.id];
-                          applyFilters({ ...filters, tag_ids: newIds.length ? newIds : undefined });
-                        }}
-                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                          selected
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "hover:bg-accent"
-                        }`}
-                      >
-                        {tag.nombre}
-                      </button>
-                    );
-                  })}
+
+                {/* Selected tags */}
+                {(filters.tag_ids ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
+                    {(filters.tag_ids ?? []).map((id) => {
+                      const tag = tags.find((t) => t.id === id);
+                      if (!tag) return null;
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => {
+                            const newIds = (filters.tag_ids ?? []).filter((tid) => tid !== id);
+                            applyFilters({ ...filters, tag_ids: newIds.length ? newIds : undefined });
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-full bg-primary text-primary-foreground flex items-center gap-1"
+                        >
+                          {tag.nombre}
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Search input */}
+                <div className="relative mt-1">
+                  <Input
+                    ref={tagInputRef}
+                    className="h-8 text-xs"
+                    placeholder="Buscar etiqueta..."
+                    value={tagSearch}
+                    onChange={(e) => { setTagSearch(e.target.value); setTagDropdownOpen(true); }}
+                    onFocus={() => setTagDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setTagDropdownOpen(false), 150)}
+                  />
+                  {tagDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover shadow-md">
+                      {tags
+                        .filter((t) =>
+                          t.nombre.toLowerCase().includes(tagSearch.toLowerCase()) &&
+                          !(filters.tag_ids ?? []).includes(t.id)
+                        )
+                        .map((tag) => (
+                          <button
+                            key={tag.id}
+                            className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              const newIds = [...(filters.tag_ids ?? []), tag.id];
+                              applyFilters({ ...filters, tag_ids: newIds });
+                              setTagSearch("");
+                              setTagDropdownOpen(false);
+                            }}
+                          >
+                            {tag.nombre}
+                          </button>
+                        ))}
+                      {tags.filter((t) =>
+                        t.nombre.toLowerCase().includes(tagSearch.toLowerCase()) &&
+                        !(filters.tag_ids ?? []).includes(t.id)
+                      ).length === 0 && (
+                        <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -245,16 +344,23 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
 
       {/* Summary + Export */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm items-center">
           <span className="text-green-600 dark:text-green-400 font-medium">
             ↑ {formatCurrency(totalIngresos, "ARS")}
           </span>
           <span className="text-red-600 dark:text-red-400 font-medium">
             ↓ {formatCurrency(totalGastos, "ARS")}
           </span>
-          <span className={`font-bold ${totalIngresos - totalGastos >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-            = {formatCurrency(totalIngresos - totalGastos, "ARS")}
-          </span>
+          <span className="text-muted-foreground">|</span>
+          <span className="text-xs text-muted-foreground">Saldo al inicio del período: {formatCurrency(startingBalance, "ARS")}</span>
+          {sortedDays.length > 0 && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className={`font-bold ${dayEndBalance[sortedDays[0]] >= 0 ? "" : "text-red-600 dark:text-red-400"}`}>
+                Saldo final: {formatCurrency(dayEndBalance[sortedDays[0]], "ARS")}
+              </span>
+            </>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -292,7 +398,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
             const dayTxs = byDay[day];
             const dayIngresos = dayTxs.filter((t) => t.tipo === "ingreso").reduce((s, t) => s + Number(t.monto), 0);
             const dayGastos = dayTxs.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0);
-            const daySaldo = dayIngresos - dayGastos;
+            const saldoAlCierre = dayEndBalance[day];
 
             return (
               <div key={day}>
@@ -313,8 +419,8 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                         -{formatCurrency(dayGastos, "ARS")}
                       </span>
                     )}
-                    <span className={`font-bold ${daySaldo >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                      = {formatCurrency(daySaldo, "ARS")}
+                    <span className={`font-bold ${saldoAlCierre >= 0 ? "text-foreground" : "text-red-600 dark:text-red-400"}`}>
+                      = {formatCurrency(saldoAlCierre, "ARS")}
                     </span>
                   </div>
                 </div>
@@ -340,7 +446,12 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {t.tipo !== "transferencia" && (
+                              <span className="shrink-0 text-muted-foreground">
+                                <DynamicCategoryIcon iconName={t.category?.icono} className="h-3.5 w-3.5" />
+                              </span>
+                            )}
                             <p className="text-sm font-medium truncate">
                               {t.tipo === "transferencia"
                                 ? `${t.account?.nombre} → ${t.to_account?.nombre}`
@@ -348,14 +459,17 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                               }
                             </p>
                             {t.tags?.map((tag) => (
-                              <Badge key={tag.id} variant="outline" className="text-xs hidden sm:inline-flex">
+                              <span
+                                key={tag.id}
+                                className="hidden sm:inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border"
+                              >
+                                <TagIcon className="h-2.5 w-2.5" />
                                 {tag.nombre}
-                              </Badge>
+                              </span>
                             ))}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{t.account?.nombre}</span>
-                            {t.notas && <span>· {t.notas}</span>}
                           </div>
                         </div>
 
@@ -394,6 +508,13 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
           })}
         </div>
       )}
+
+      {/* Import dialog */}
+      <ImportTransactionsDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSuccess={() => applyFilters(filters)}
+      />
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>

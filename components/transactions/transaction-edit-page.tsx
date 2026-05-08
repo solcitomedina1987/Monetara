@@ -144,10 +144,13 @@ export function TransactionEditPage({ transaction, accounts, categories, tags: i
             {tipo !== "transferencia" && (
               <div className="space-y-2">
                 <Label>Categoría</Label>
-                <Select value={watch("category_id") ?? ""} onValueChange={(v) => setValue("category_id", v)}>
+                <Select
+                  value={watch("category_id") || "__none__"}
+                  onValueChange={(v) => setValue("category_id", v === "__none__" ? "" : v)}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin categoría</SelectItem>
+                    <SelectItem value="__none__">Sin categoría</SelectItem>
                     {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
                   </SelectContent>
                 </Select>

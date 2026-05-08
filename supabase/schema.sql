@@ -130,33 +130,7 @@ CREATE POLICY "tags_delete_own" ON tags
   FOR DELETE USING (auth.uid() = user_id);
 
 -- ============================================================
--- 5. CATEGORY_TAGS (Relación N:N Categorías <-> Etiquetas)
--- ============================================================
-CREATE TABLE IF NOT EXISTS category_tags (
-  category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-  tag_id      UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-  PRIMARY KEY (category_id, tag_id)
-);
-
-ALTER TABLE category_tags ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "category_tags_select_own" ON category_tags
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM categories WHERE id = category_id AND user_id = auth.uid())
-  );
-
-CREATE POLICY "category_tags_insert_own" ON category_tags
-  FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM categories WHERE id = category_id AND user_id = auth.uid())
-  );
-
-CREATE POLICY "category_tags_delete_own" ON category_tags
-  FOR DELETE USING (
-    EXISTS (SELECT 1 FROM categories WHERE id = category_id AND user_id = auth.uid())
-  );
-
--- ============================================================
--- 6. TRANSACTIONS (Transacciones)
+-- 5. TRANSACTIONS (Transacciones)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS transactions (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -249,7 +223,24 @@ RETURNS NUMERIC LANGUAGE sql STABLE AS $$
 $$;
 
 -- ============================================================
--- 10. TRIGGER: updated_at automático
+-- 10. FUNCIÓN: saldo total real (todos los ingresos − todos los gastos)
+--     Equivale a: SELECT sum(monto), tipo FROM transactions GROUP BY tipo
+--     filtrado por el usuario autenticado.
+-- ============================================================
+CREATE OR REPLACE FUNCTION get_total_balance()
+RETURNS NUMERIC LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(
+    SUM(CASE
+      WHEN tipo = 'ingreso' THEN monto
+      WHEN tipo = 'gasto'   THEN -monto
+      ELSE 0
+    END), 0)
+  FROM transactions
+  WHERE user_id = auth.uid();
+$$;
+
+-- ============================================================
+-- 11. TRIGGER: updated_at automático
 -- ============================================================
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
