@@ -121,8 +121,9 @@ export function TransactionFormPage({
       const tag = await upsertTag(tagName);
       if (!allTags.find((t) => t.id === tag.id)) setAllTags((prev) => [...prev, tag]);
       if (!selectedTagIds.includes(tag.id)) setSelectedTagIds((prev) => [...prev, tag.id]);
+      // Clear input and keep focus so user can keep adding tags
       setTagInput("");
-      setTagDropdownOpen(false);
+      setTimeout(() => tagInputRef.current?.focus(), 0);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
     }
@@ -397,9 +398,9 @@ export function TransactionFormPage({
                   className="flex h-9 w-full rounded-md border bg-background pl-8 pr-3 py-2 text-sm shadow-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
                   placeholder="Buscar o crear etiqueta..."
                   value={tagInput}
-                  onChange={(e) => { setTagInput(e.target.value); setTagDropdownOpen(true); }}
-                  onFocus={() => setTagDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setTagDropdownOpen(false), 150)}
+                  onChange={(e) => { setTagInput(e.target.value); setTagDropdownOpen(e.target.value.trim().length > 0); }}
+                  onFocus={() => { if (tagInput.trim()) setTagDropdownOpen(true); }}
+                  onBlur={() => setTimeout(() => setTagDropdownOpen(false), 200)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -412,6 +413,7 @@ export function TransactionFormPage({
                     {filteredTags.map((tag) => (
                       <button
                         key={tag.id}
+                        type="button"
                         className="w-full text-left text-sm px-3 py-2 hover:bg-accent transition-colors"
                         onMouseDown={(e) => {
                           e.preventDefault();
@@ -423,6 +425,7 @@ export function TransactionFormPage({
                     ))}
                     {showCreateTag && (
                       <button
+                        type="button"
                         className="w-full text-left text-sm px-3 py-2 hover:bg-accent text-primary flex items-center gap-2"
                         onMouseDown={(e) => {
                           e.preventDefault();
