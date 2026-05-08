@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle, ArrowLeftRight,
-  Wallet, Tag, FolderOpen, BarChart3, X, TrendingUp, UserCircle,
+  Wallet, Tag, FolderOpen, BarChart3, X, UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -30,9 +31,19 @@ export function Sidebar({ onClose }: SidebarProps) {
     <div className="flex h-full flex-col bg-card border-r">
       {/* Logo */}
       <div className="flex h-16 items-center justify-between px-6 border-b">
-        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg" onClick={onClose}>
-          <TrendingUp className="h-6 w-6 text-primary" />
-          <span>Monetara</span>
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2.5 font-bold text-lg transition-opacity hover:opacity-80"
+          onClick={onClose}
+        >
+          <Image
+            src="/logo-monetara.png"
+            alt="Monetara"
+            width={28}
+            height={28}
+            className="h-7 w-7 object-contain shrink-0"
+          />
+          <span className="truncate">Monetara</span>
         </Link>
         {onClose && (
           <Button variant="ghost" size="icon" onClick={onClose} className="md:hidden">

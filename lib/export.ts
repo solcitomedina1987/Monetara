@@ -76,6 +76,21 @@ export async function exportToExcel(transactions: TransactionWithRelations[], fi
   XLSX.writeFile(wb, filename ?? `movimientos_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
 }
 
+async function loadLogoBase64(): Promise<string | null> {
+  try {
+    const res = await fetch("/logo-monetara.png");
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 // ============================================================
 // PDF Export
 // ============================================================
@@ -86,6 +101,16 @@ export async function exportToPDF(transactions: TransactionWithRelations[], filt
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
+
+  // Try to embed logo
+  const logoBase64 = await loadLogoBase64();
+  const logoW = 22;
+  const logoH = 22;
+  const logoX = pageWidth - margin - logoW;
+  const logoY = 8;
+  if (logoBase64) {
+    doc.addImage(logoBase64, "PNG", logoX, logoY, logoW, logoH);
+  }
 
   // Header
   doc.setFontSize(16);
@@ -102,8 +127,12 @@ export async function exportToPDF(transactions: TransactionWithRelations[], filt
 
   doc.text(`Ingresos: $${totalIngresos.toFixed(2)} | Gastos: $${totalGastos.toFixed(2)} | Balance: $${(totalIngresos - totalGastos).toFixed(2)}`, margin, 40);
 
+  // Thin separator line under header
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margin, 45, pageWidth - margin, 45);
+
   // Table headers
-  let y = 50;
+  let y = 52;
   const colWidths = [28, 30, 35, 45, 40, 40, 50];
   const headers = ["Fecha", "Tipo", "Monto", "Cuenta", "Categoría", "Etiquetas", "Notas"];
   const colX = [margin];

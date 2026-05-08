@@ -8,7 +8,19 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Monetara | Gestión de Finanzas Personales",
-  description: "Controlá tus ingresos y egresos de forma simple y eficiente.",
+  description: "Controlá tus finanzas personales de forma simple, visual y eficiente. Registrá ingresos, egresos, gestioná cuentas y generá reportes.",
+  openGraph: {
+    title: "Monetara | Gestión de Finanzas Personales",
+    description: "Controlá tus finanzas personales de forma simple, visual y eficiente.",
+    siteName: "Monetara",
+    type: "website",
+    locale: "es_AR",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Monetara | Gestión de Finanzas Personales",
+    description: "Controlá tus finanzas personales de forma simple, visual y eficiente.",
+  },
 };
 
 export const viewport: Viewport = {
