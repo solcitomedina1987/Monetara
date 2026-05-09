@@ -23,12 +23,17 @@ import {
 import { toast } from "@/hooks/use-toast";
 import type { Category } from "@/lib/types";
 
-// Build the full Lucide icon list at module level (excludes non-component exports)
+// Build the full Lucide icon list at module level.
+// In this version of lucide-react all icons are forwardRef objects (typeof === "object"),
+// not plain functions. We identify them by their $$typeof + render shape and skip
+// the "*Icon" aliases to avoid duplicates.
 const ALL_LUCIDE_ICONS: string[] = Object.keys(LucideIcons).filter((key) => {
-  if (!(/^[A-Z]/).test(key)) return false;           // must start with uppercase
+  if (!(/^[A-Z]/).test(key)) return false;   // must start with uppercase
+  if (key.endsWith("Icon")) return false;     // skip *Icon aliases (e.g. HomeIcon → Home)
   if (key === "createLucideIcon") return false;
   const val = (LucideIcons as any)[key];
-  return typeof val === "function";
+  if (!val || typeof val !== "object") return false;
+  return "$$typeof" in val;                  // forwardRef / memo exotic component
 });
 
 const ICONS_PER_PAGE = 100; // 10 cols (desktop) × 10 rows
@@ -36,7 +41,8 @@ const ICONS_PER_PAGE = 100; // 10 cols (desktop) × 10 rows
 function DynamicIcon({ name, className }: { name: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
   if (!name) return <FolderOpen className={cls} />;
-  const IconComponent = (LucideIcons as any)[name] as React.FC<{ className?: string }>;
+  // Icons in this version of lucide-react are forwardRef exotic objects, not plain functions.
+  const IconComponent = (LucideIcons as any)[name] as React.ElementType<{ className?: string }>;
   if (!IconComponent) return <FolderOpen className={cls} />;
   return <IconComponent className={cls} />;
 }

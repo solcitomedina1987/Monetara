@@ -34,7 +34,7 @@ import type { Account, Category, Tag, TransactionWithRelations, TransactionFilte
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
   if (!iconName) return <FolderOpen className={cls} />;
-  const IconComponent = (LucideIcons as any)[iconName] as React.FC<{ className?: string }>;
+  const IconComponent = (LucideIcons as any)[iconName] as React.ElementType<{ className?: string }>;
   if (!IconComponent) return <FolderOpen className={cls} />;
   return <IconComponent className={cls} />;
 }
