@@ -7,10 +7,10 @@ import { format, subMonths, startOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import * as LucideIcons from "lucide-react";
 import {
-  Plus, Filter, Download, Trash2, Pencil, ArrowLeftRight,
+  Plus, Minus, Filter, Download, Trash2, Pencil, ArrowLeftRight,
   ChevronDown, X, Loader2,
   Tag as TagIcon, FolderOpen, Wallet, Mail, FileText, Sheet,
-  FileSpreadsheet,
+  FileSpreadsheet, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -207,19 +207,41 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
           <h1 className="text-2xl font-bold">Movimientos</h1>
           <p className="text-sm text-muted-foreground">{transactions.length} movimientos</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Filters toggle */}
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4 mr-2" />
             Filtros
             <ChevronDown className={`h-4 w-4 ml-1 transition-transform ${showFilters ? "rotate-180" : ""}`} />
           </Button>
+
+          {/* File actions group */}
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <Download className="h-4 w-4 mr-2 rotate-180" />
+            <Download className="h-4 w-4 mr-1.5 rotate-180" />
             Importar
           </Button>
-          <Link href="/transactions/new">
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" /> Nuevo
+          <Button variant="outline" size="sm" onClick={openExportDialog}>
+            <Download className="h-4 w-4 mr-1.5" />
+            Exportar
+          </Button>
+
+          {/* Quick-add actions */}
+          <Link href="/transactions/new?tipo=ingreso">
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white gap-1.5 h-8 px-3 text-xs">
+              <ArrowUpCircle className="h-3.5 w-3.5" />
+              Ingreso
+            </Button>
+          </Link>
+          <Link href="/transactions/new?tipo=gasto">
+            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white gap-1.5 h-8 px-3 text-xs">
+              <ArrowDownCircle className="h-3.5 w-3.5" />
+              Gasto
+            </Button>
+          </Link>
+          <Link href="/transactions/new?tipo=transferencia">
+            <Button size="sm" className="bg-[#1f628e] hover:bg-[#0e415f] text-white gap-1.5 h-8 px-3 text-xs">
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              Transferencia
             </Button>
           </Link>
         </div>
@@ -467,33 +489,6 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
         </Card>
       )}
 
-      {/* Summary + Export */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm items-center">
-          <span className="text-green-600 dark:text-green-400 font-medium">
-            ↑ {formatCurrency(totalIngresos, "ARS")}
-          </span>
-          <span className="text-red-600 dark:text-red-400 font-medium">
-            ↓ {formatCurrency(totalGastos, "ARS")}
-          </span>
-          <span className="text-muted-foreground">|</span>
-          <span className="text-xs text-muted-foreground">Inicio período: {formatCurrency(startingBalance, "ARS")}</span>
-          {sortedDays.length > 0 && (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <span className={`font-bold ${dayEndBalance[sortedDays[0]] >= 0 ? "" : "text-red-600 dark:text-red-400"}`}>
-                Final: {formatCurrency(dayEndBalance[sortedDays[0]], "ARS")}
-              </span>
-            </>
-          )}
-        </div>
-
-        <Button variant="outline" size="sm" onClick={openExportDialog}>
-          <Download className="h-3.5 w-3.5 mr-1.5" />
-          Exportar
-        </Button>
-      </div>
-
       {/* Transaction list */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -576,12 +571,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                             ))}
                           </div>
 
-                          {/* Line 2: account name (text only, no icon) */}
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {t.account?.nombre}
-                          </p>
-
-                          {/* Line 3: notes — only when not empty */}
+                          {/* Line 2: notes — only when not empty */}
                           {t.notas?.trim() && (
                             <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
                               Nota: {t.notas}

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import * as LucideIcons from "lucide-react";
 import {
   Plus, Pencil, PowerOff, FolderOpen, Search, Loader2, AlertTriangle, Smile, Power,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,25 +23,15 @@ import {
 import { toast } from "@/hooks/use-toast";
 import type { Category } from "@/lib/types";
 
-const CATEGORY_ICONS = [
-  "Utensils", "UtensilsCrossed", "Coffee", "Pizza", "Apple", "Sandwich", "IceCream2", "Wine",
-  "ShoppingCart", "ShoppingBag", "Store", "Tag",
-  "Car", "Bus", "Train", "Bike", "Plane", "Fuel", "Taxi",
-  "Home", "Building2", "Sofa", "Lightbulb", "Wrench", "Hammer", "Drill", "Trash2",
-  "Heart", "Activity", "Stethoscope", "Pill", "Cross", "Ambulance",
-  "GraduationCap", "BookOpen", "School", "Book", "Pencil",
-  "Shirt", "Footprints", "Scissors",
-  "Gamepad2", "Music", "Film", "Tv", "Camera", "Headphones", "Ticket",
-  "Smartphone", "Laptop", "Monitor", "Cpu", "Wifi",
-  "Dumbbell", "Trophy", "PersonStanding", "Wind",
-  "DollarSign", "CreditCard", "Wallet", "PiggyBank", "Banknote", "Receipt",
-  "TrendingUp", "TrendingDown", "ArrowLeftRight",
-  "Gift", "Package", "Star", "Globe", "MapPin",
-  "Users", "User", "Baby", "Dog", "Cat",
-  "Palette", "Leaf", "TreePine", "Flower",
-  "Zap", "Sun", "Moon", "Cloud", "Umbrella",
-  "Briefcase", "Landmark", "Building",
-];
+// Build the full Lucide icon list at module level (excludes non-component exports)
+const ALL_LUCIDE_ICONS: string[] = Object.keys(LucideIcons).filter((key) => {
+  if (!(/^[A-Z]/).test(key)) return false;           // must start with uppercase
+  if (key === "createLucideIcon") return false;
+  const val = (LucideIcons as any)[key];
+  return typeof val === "function";
+});
+
+const ICONS_PER_PAGE = 88; // 8 columns × 11 rows
 
 function DynamicIcon({ name, className }: { name: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
@@ -60,6 +51,7 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [iconSearch, setIconSearch] = useState("");
+  const [iconPage, setIconPage] = useState(0);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deactivatingCategory, setDeactivatingCategory] = useState<Category | null>(null);
   const [deactivateStats, setDeactivateStats] = useState<{ ingresos: number; gastos: number } | null>(null);
@@ -73,14 +65,19 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
     c.nombre.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredIcons = CATEGORY_ICONS.filter((icon) =>
-    icon.toLowerCase().includes(iconSearch.toLowerCase())
+  const filteredIcons = useMemo(
+    () => ALL_LUCIDE_ICONS.filter((icon) => icon.toLowerCase().includes(iconSearch.toLowerCase())),
+    [iconSearch]
   );
+
+  const totalIconPages = Math.ceil(filteredIcons.length / ICONS_PER_PAGE);
+  const pagedIcons = filteredIcons.slice(iconPage * ICONS_PER_PAGE, (iconPage + 1) * ICONS_PER_PAGE);
 
   const openCreate = () => {
     setEditingCategory(null);
     setSelectedIcon(null);
     setIconSearch("");
+    setIconPage(0);
     reset({ nombre: "" });
     setDialogOpen(true);
   };
@@ -89,8 +86,14 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
     setEditingCategory(cat);
     setSelectedIcon(cat.icono ?? null);
     setIconSearch("");
+    setIconPage(0);
     reset({ nombre: cat.nombre });
     setDialogOpen(true);
+  };
+
+  const handleIconSearch = (val: string) => {
+    setIconSearch(val);
+    setIconPage(0);
   };
 
   const onSubmit = (data: FormData) => {
@@ -235,7 +238,7 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{editingCategory ? "Editar Categoría" : "Nueva Categoría"}</DialogTitle>
           </DialogHeader>
@@ -247,33 +250,38 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
             </div>
 
             <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                Ícono
+              {/* Icon label + current selection */}
+              <div className="flex items-center justify-between">
+                <Label>Ícono</Label>
                 {selectedIcon && (
-                  <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <DynamicIcon name={selectedIcon} className="h-3.5 w-3.5" />
-                    {selectedIcon}
+                    <span className="font-medium">{selectedIcon}</span>
                     <button
                       type="button"
-                      className="text-destructive hover:underline ml-1"
+                      className="text-destructive hover:underline"
                       onClick={() => setSelectedIcon(null)}
                     >
                       quitar
                     </button>
                   </span>
                 )}
-              </Label>
+              </div>
+
+              {/* Search */}
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar ícono..."
+                  placeholder={`Buscar entre ${ALL_LUCIDE_ICONS.length.toLocaleString()} íconos...`}
                   value={iconSearch}
-                  onChange={(e) => setIconSearch(e.target.value)}
+                  onChange={(e) => handleIconSearch(e.target.value)}
                   className="pl-8 h-8 text-sm"
                 />
               </div>
-              <div className="grid grid-cols-9 gap-1.5 max-h-44 overflow-y-auto rounded-md border p-2 bg-muted/30">
-                {filteredIcons.map((iconName) => {
+
+              {/* Icon grid */}
+              <div className="grid grid-cols-8 gap-1 rounded-md border p-2 bg-muted/20" style={{ minHeight: "9rem" }}>
+                {pagedIcons.map((iconName) => {
                   const isSelected = selectedIcon === iconName;
                   return (
                     <button
@@ -290,11 +298,42 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
                   );
                 })}
                 {filteredIcons.length === 0 && (
-                  <div className="col-span-9 flex items-center justify-center py-4 text-xs text-muted-foreground">
-                    <Smile className="h-4 w-4 mr-1" /> Sin resultados
+                  <div className="col-span-8 flex items-center justify-center py-6 text-xs text-muted-foreground">
+                    <Smile className="h-4 w-4 mr-1" /> Sin resultados para "{iconSearch}"
                   </div>
                 )}
               </div>
+
+              {/* Pagination */}
+              {totalIconPages > 1 && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {filteredIcons.length.toLocaleString()} íconos · página {iconPage + 1} de {totalIconPages}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={iconPage === 0}
+                      onClick={() => setIconPage((p) => Math.max(0, p - 1))}
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={iconPage >= totalIconPages - 1}
+                      onClick={() => setIconPage((p) => Math.min(totalIconPages - 1, p + 1))}
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <DialogFooter>
