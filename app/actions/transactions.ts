@@ -96,6 +96,71 @@ export async function createTransaction(payload: {
 
   const { tag_ids, ...transactionData } = payload;
 
+  // Double-entry accounting for transfers: insert one gasto + one ingreso
+  if (payload.tipo === "transferencia") {
+    if (!payload.to_account_id) throw new Error("Cuenta destino requerida para transferencias");
+
+    const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const transferNote = `[Transferencia ref:${ref}]${payload.notas ? " · " + payload.notas : ""}`;
+
+    const [gastoResult, ingresoResult] = await Promise.all([
+      supabase
+        .from("transactions")
+        .insert({
+          monto: payload.monto,
+          tipo: "gasto",
+          account_id: payload.account_id,
+          to_account_id: payload.to_account_id,
+          category_id: null,
+          fecha: payload.fecha,
+          notas: transferNote,
+          user_id: user.id,
+        })
+        .select()
+        .single(),
+      supabase
+        .from("transactions")
+        .insert({
+          monto: payload.monto,
+          tipo: "ingreso",
+          account_id: payload.to_account_id,
+          to_account_id: payload.account_id,
+          category_id: null,
+          fecha: payload.fecha,
+          notas: transferNote,
+          user_id: user.id,
+        })
+        .select()
+        .single(),
+    ]);
+
+    // Rollback if either insert failed
+    if (gastoResult.error || ingresoResult.error) {
+      if (gastoResult.data) {
+        await supabase.from("transactions").delete().eq("id", gastoResult.data.id);
+      }
+      if (ingresoResult.data) {
+        await supabase.from("transactions").delete().eq("id", ingresoResult.data.id);
+      }
+      throw gastoResult.error ?? ingresoResult.error;
+    }
+
+    if (tag_ids && tag_ids.length > 0) {
+      await Promise.all([
+        supabase.from("transaction_tags").insert(
+          tag_ids.map((tag_id) => ({ transaction_id: gastoResult.data!.id, tag_id }))
+        ),
+        supabase.from("transaction_tags").insert(
+          tag_ids.map((tag_id) => ({ transaction_id: ingresoResult.data!.id, tag_id }))
+        ),
+      ]);
+    }
+
+    revalidatePath("/transactions");
+    revalidatePath("/dashboard");
+    return gastoResult.data as Transaction;
+  }
+
   const { data, error } = await supabase
     .from("transactions")
     .insert({ ...transactionData, user_id: user.id })
@@ -305,4 +370,57 @@ export async function getExpensesByCategory(filters?: TransactionFilters) {
   return Object.entries(grouped)
     .map(([name, { value, category_id }]) => ({ name, value, category_id }))
     .sort((a, b) => b.value - a.value);
+}
+
+export async function getExpensesByTag(filters?: TransactionFilters) {
+  const supabase = await createClient();
+
+  const dates = getPeriodDates(filters) ?? getPeriodDates({ periodo: "mes_actual" })!;
+
+  let query = supabase
+    .from("transactions")
+    .select(`
+      monto,
+      transaction_tags(tag:tags(id, nombre))
+    `)
+    .eq("tipo", "gasto")
+    .gte("fecha", dates[0])
+    .lte("fecha", dates[1]);
+
+  if (filters?.account_id) {
+    query = query.eq("account_id", filters.account_id);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const grouped: Record<string, { value: number; tag_id: string | null }> = {};
+  let untagged = 0;
+
+  data?.forEach((t: any) => {
+    const tags = (t.transaction_tags ?? [])
+      .map((tt: any) => tt.tag)
+      .filter(Boolean);
+
+    if (tags.length === 0) {
+      untagged += Number(t.monto);
+    } else {
+      tags.forEach((tag: any) => {
+        if (!grouped[tag.nombre]) {
+          grouped[tag.nombre] = { value: 0, tag_id: tag.id };
+        }
+        grouped[tag.nombre].value += Number(t.monto);
+      });
+    }
+  });
+
+  const result = Object.entries(grouped)
+    .map(([name, { value, tag_id }]) => ({ name, value, tag_id }))
+    .sort((a, b) => b.value - a.value);
+
+  if (untagged > 0) {
+    result.push({ name: "Sin etiqueta", value: untagged, tag_id: null });
+  }
+
+  return result;
 }

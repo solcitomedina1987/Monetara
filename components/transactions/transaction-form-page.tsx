@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -66,6 +66,15 @@ export function TransactionFormPage({
 
   // Amount raw value (float)
   const [amountValue, setAmountValue] = useState<number | undefined>(undefined);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus the amount field after the DOM is ready
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      amountInputRef.current?.focus();
+    }, 80);
+    return () => clearTimeout(timer);
+  }, []);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
@@ -165,7 +174,7 @@ export function TransactionFormPage({
   const tipoColors = {
     ingreso: "text-green-600 dark:text-green-400",
     gasto: "text-red-600 dark:text-red-400",
-    transferencia: "text-blue-600 dark:text-blue-400",
+    transferencia: "text-violet-600 dark:text-violet-400",
   };
 
   return (
@@ -195,7 +204,7 @@ export function TransactionFormPage({
               </TabsTrigger>
               <TabsTrigger
                 value="transferencia"
-                className="data-[state=active]:text-blue-600 data-[state=active]:bg-blue-50 dark:data-[state=active]:bg-blue-900/20"
+                className="data-[state=active]:text-violet-600 data-[state=active]:bg-violet-50 dark:data-[state=active]:bg-violet-900/20"
               >
                 ⇄ Transferencia
               </TabsTrigger>
@@ -219,6 +228,7 @@ export function TransactionFormPage({
                   decimalScale={2}
                   allowNegative={false}
                   placeholder="0,00"
+                  getInputRef={amountInputRef}
                   className={`pl-8 text-xl font-bold h-14 ${tipoColors[tipo]}`}
                   onValueChange={(vals) => setAmountValue(vals.floatValue)}
                 />
@@ -481,8 +491,8 @@ export function TransactionFormPage({
                     ? "bg-green-600 hover:bg-green-700"
                     : tipo === "gasto"
                     ? "bg-red-600 hover:bg-red-700"
-                    : ""
-                }`}
+                    : "bg-violet-600 hover:bg-violet-700"
+                } text-white`}
               >
                 {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {tipo === "ingreso"

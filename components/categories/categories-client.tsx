@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -36,7 +36,8 @@ const ALL_LUCIDE_ICONS: string[] = Object.keys(LucideIcons).filter((key) => {
   return "$$typeof" in val;                  // forwardRef / memo exotic component
 });
 
-const ICONS_PER_PAGE = 100; // 10 cols (desktop) × 10 rows
+const ICONS_PER_PAGE_DESKTOP = 100; // 10 cols × 10 rows
+const ICONS_PER_PAGE_MOBILE  = 50;  // 5 cols × 10 rows
 
 function DynamicIcon({ name, className }: { name: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
@@ -57,6 +58,15 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   const [iconPage, setIconPage] = useState(0);
+  const [iconsPerPage, setIconsPerPage] = useState(ICONS_PER_PAGE_DESKTOP);
+
+  useEffect(() => {
+    const update = () =>
+      setIconsPerPage(window.innerWidth < 640 ? ICONS_PER_PAGE_MOBILE : ICONS_PER_PAGE_DESKTOP);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deactivatingCategory, setDeactivatingCategory] = useState<Category | null>(null);
   const [deactivateStats, setDeactivateStats] = useState<{ ingresos: number; gastos: number } | null>(null);
@@ -70,8 +80,8 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
     c.nombre.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalIconPages = Math.ceil(ALL_LUCIDE_ICONS.length / ICONS_PER_PAGE);
-  const pagedIcons = ALL_LUCIDE_ICONS.slice(iconPage * ICONS_PER_PAGE, (iconPage + 1) * ICONS_PER_PAGE);
+  const totalIconPages = Math.ceil(ALL_LUCIDE_ICONS.length / iconsPerPage);
+  const pagedIcons = ALL_LUCIDE_ICONS.slice(iconPage * iconsPerPage, (iconPage + 1) * iconsPerPage);
 
   const openCreate = () => {
     setEditingCategory(null);
@@ -87,7 +97,7 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
     // Jump to the page that contains the currently selected icon
     if (cat.icono) {
       const idx = ALL_LUCIDE_ICONS.indexOf(cat.icono);
-      setIconPage(idx >= 0 ? Math.floor(idx / ICONS_PER_PAGE) : 0);
+      setIconPage(idx >= 0 ? Math.floor(idx / iconsPerPage) : 0);
     } else {
       setIconPage(0);
     }

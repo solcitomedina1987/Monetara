@@ -144,11 +144,11 @@ export function Sidebar({ onClose }: SidebarProps) {
           - Gasto
         </Link>
 
-        {/* Transferencia — fondo azul en todos los temas */}
+        {/* Transferencia — violet en todos los temas */}
         <Link
           href="/transactions/new?tipo=transferencia"
           onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white bg-[#1f628e] hover:bg-[#0e415f] transition-colors"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 transition-colors"
         >
           <ArrowLeftRight className="h-4 w-4" />
           ⇄ Transferencia

@@ -47,6 +47,12 @@ export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
     setLoading(true);
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Clear persisted filters on logout
+    try {
+      localStorage.removeItem("monetara_tx_filters");
+      localStorage.removeItem("monetara_dashboard_account");
+      localStorage.removeItem("monetara_dashboard_periodo");
+    } catch {}
     router.push("/login");
   };
 

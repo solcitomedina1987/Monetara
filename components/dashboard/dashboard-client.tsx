@@ -2,25 +2,37 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
+import * as LucideIcons from "lucide-react";
 import {
   ArrowUpCircle, ArrowDownCircle, ArrowLeftRight, TrendingUp,
-  TrendingDown, Wallet, RefreshCw, Scale, Maximize2, X,
+  TrendingDown, Wallet, RefreshCw, Scale, Maximize2, X, FolderOpen,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
-import { getDashboardStats, getExpensesByCategory, getTransactions, getTotalBalance } from "@/app/actions/transactions";
+import { usePersistedState } from "@/lib/hooks/use-persisted-state";
+import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance } from "@/app/actions/transactions";
 import type { Account, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
+
+function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
+  const cls = className ?? "h-3 w-3";
+  if (!iconName) return <FolderOpen className={cls} />;
+  const IconComponent = (LucideIcons as any)[iconName] as React.ElementType<{ className?: string }>;
+  if (!IconComponent) return <FolderOpen className={cls} />;
+  return <IconComponent className={cls} />;
+}
 
 const CHART_COLORS = [
   "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6",
@@ -49,6 +61,9 @@ function getDefaultCustomDates() {
 type ExpenseEntry = { name: string; value: number; category_id: string | null };
 type GroupedEntry = ExpenseEntry & { isVarios?: boolean };
 
+type TagEntry = { name: string; value: number; tag_id: string | null };
+type GroupedTagEntry = TagEntry & { isVarios?: boolean };
+
 /** Group categories < 5% of total into "Varios" */
 function groupSmallSlices(data: ExpenseEntry[]): GroupedEntry[] {
   const total = data.reduce((s, e) => s + e.value, 0);
@@ -61,6 +76,24 @@ function groupSmallSlices(data: ExpenseEntry[]): GroupedEntry[] {
       name: "Varios",
       value: varios.reduce((s, e) => s + e.value, 0),
       category_id: null,
+      isVarios: true,
+    });
+  }
+  return main;
+}
+
+/** Group tags < 5% of total into "Varios" */
+function groupSmallTagSlices(data: TagEntry[]): GroupedTagEntry[] {
+  const total = data.reduce((s, e) => s + e.value, 0);
+  if (total === 0) return data;
+  const threshold = total * 0.05;
+  const main: GroupedTagEntry[] = data.filter((e) => e.value >= threshold);
+  const varios = data.filter((e) => e.value < threshold);
+  if (varios.length > 0) {
+    main.push({
+      name: "Varios",
+      value: varios.reduce((s, e) => s + e.value, 0),
+      tag_id: null,
       isVarios: true,
     });
   }
@@ -86,26 +119,31 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const router = useRouter();
 
-  const [selectedAccount, setSelectedAccount] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("finanzas_account") ?? defaultAccountId ?? "todos";
-    }
-    return defaultAccountId ?? "todos";
-  });
-  const [periodo, setPeriodo] = useState<DashboardPeriod>("mes_actual");
+  const [selectedAccount, setSelectedAccount] = usePersistedState<string>(
+    "monetara_dashboard_account",
+    defaultAccountId ?? "todos"
+  );
+  const [periodo, setPeriodo] = usePersistedState<DashboardPeriod>(
+    "monetara_dashboard_periodo",
+    "mes_actual"
+  );
   const [customDates, setCustomDates] = useState(getDefaultCustomDates);
 
   const [stats, setStats] = useState(initialStats);
   const [expenses, setExpenses] = useState<ExpenseEntry[]>(initialExpensesByCategory);
+  const [expensesByTag, setExpensesByTag] = useState<TagEntry[]>([]);
   const [transactions, setTransactions] = useState(initialTransactions);
   const [totalBalance, setTotalBalance] = useState(initialTotalBalance);
   const [loading, setLoading] = useState(false);
   const [chartFullscreen, setChartFullscreen] = useState(false);
+  const [chartMode, setChartMode] = useState<"categoria" | "etiqueta">("categoria");
 
   // Modal-specific filters (independent from main filters)
   const [modalPeriodo, setModalPeriodo] = useState<DashboardPeriod>("mes_actual");
   const [modalAccount, setModalAccount] = useState<string>("todos");
   const [modalExpenses, setModalExpenses] = useState<ExpenseEntry[]>(initialExpensesByCategory);
+  const [modalExpensesByTag, setModalExpensesByTag] = useState<TagEntry[]>([]);
+  const [modalChartMode, setModalChartMode] = useState<"categoria" | "etiqueta">("categoria");
   const [modalLoading, setModalLoading] = useState(false);
 
   const buildFilters = useCallback(
@@ -128,14 +166,16 @@ export function DashboardClient({
     const filters = buildFilters(account, per, dates);
     const accountId = account === "todos" ? undefined : account;
     try {
-      const [newStats, newExpenses, newTx, newTotal] = await Promise.all([
+      const [newStats, newExpenses, newTagExpenses, newTx, newTotal] = await Promise.all([
         getDashboardStats(filters),
         getExpensesByCategory(filters),
+        getExpensesByTag(filters),
         getTransactions(filters),
         getTotalBalance(accountId),
       ]);
       setStats(newStats);
       setExpenses(newExpenses);
+      setExpensesByTag(newTagExpenses);
       setTransactions(newTx);
       setTotalBalance(newTotal);
     } finally {
@@ -144,9 +184,6 @@ export function DashboardClient({
   }, [selectedAccount, periodo, customDates, buildFilters]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("finanzas_account", selectedAccount);
-    }
     refresh(selectedAccount, periodo, customDates);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccount, periodo]);
@@ -162,8 +199,12 @@ export function DashboardClient({
     setModalLoading(true);
     const filters = buildFilters(account, per, customDates);
     try {
-      const newExpenses = await getExpensesByCategory(filters);
+      const [newExpenses, newTagExpenses] = await Promise.all([
+        getExpensesByCategory(filters),
+        getExpensesByTag(filters),
+      ]);
       setModalExpenses(newExpenses);
+      setModalExpensesByTag(newTagExpenses);
     } finally {
       setModalLoading(false);
     }
@@ -173,6 +214,8 @@ export function DashboardClient({
     setModalPeriodo(periodo);
     setModalAccount(selectedAccount);
     setModalExpenses(expenses);
+    setModalExpensesByTag(expensesByTag);
+    setModalChartMode(chartMode);
     setChartFullscreen(true);
   };
 
@@ -209,6 +252,8 @@ export function DashboardClient({
 
   const groupedExpenses = useMemo<GroupedEntry[]>(() => groupSmallSlices(expenses), [expenses]);
   const groupedModalExpenses = useMemo<GroupedEntry[]>(() => groupSmallSlices(modalExpenses), [modalExpenses]);
+  const groupedTagExpenses = useMemo<GroupedTagEntry[]>(() => groupSmallTagSlices(expensesByTag), [expensesByTag]);
+  const groupedModalTagExpenses = useMemo<GroupedTagEntry[]>(() => groupSmallTagSlices(modalExpensesByTag), [modalExpensesByTag]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
@@ -220,7 +265,8 @@ export function DashboardClient({
     );
   };
 
-  const renderChart = (data: GroupedEntry[], onSliceClick?: (entry: any) => void, height = 250) => (
+  type AnyChartEntry = { name: string; value: number; isVarios?: boolean; category_id?: string | null; tag_id?: string | null };
+  const renderChart = (data: AnyChartEntry[], onSliceClick?: (entry: any) => void, height = 250) => (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
         <Pie
@@ -342,7 +388,7 @@ export function DashboardClient({
           </Button>
         </Link>
         <Link href="/transactions/new?tipo=transferencia">
-          <Button size="xl" variant="outline" className="w-full gap-2 h-14 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20">
+          <Button size="xl" className="w-full gap-2 h-14 bg-violet-600 hover:bg-violet-700 text-white">
             <ArrowLeftRight className="h-5 w-5" />
             <span className="hidden sm:inline">⇄ Transferencia</span>
             <span className="sm:hidden">Transfer.</span>
@@ -424,14 +470,19 @@ export function DashboardClient({
 
       {/* Chart + Transactions */}
       <div className="grid gap-6 lg:grid-cols-5">
-        {/* Expense donut chart */}
+        {/* Expense donut chart — dual mode (categoría / etiqueta) */}
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-start justify-between">
-            <div>
-              <CardTitle className="text-base">Gastos por Categoría</CardTitle>
-              <CardDescription>{PERIOD_LABELS[periodo]}</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between pb-2">
+            <div className="flex-1">
+              <Tabs value={chartMode} onValueChange={(v) => setChartMode(v as "categoria" | "etiqueta")}>
+                <TabsList className="h-7 text-xs">
+                  <TabsTrigger value="categoria" className="text-xs px-2 h-6">Categoría</TabsTrigger>
+                  <TabsTrigger value="etiqueta" className="text-xs px-2 h-6">Etiqueta</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <CardDescription className="mt-1">{PERIOD_LABELS[periodo]}</CardDescription>
             </div>
-            {groupedExpenses.length > 0 && (
+            {(chartMode === "categoria" ? groupedExpenses : groupedTagExpenses).length > 0 && (
               <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleOpenFullscreen} title="Pantalla completa">
                 <Maximize2 className="h-4 w-4" />
               </Button>
@@ -440,24 +491,34 @@ export function DashboardClient({
           <CardContent>
             {loading ? (
               <Skeleton className="h-64 w-full rounded-full mx-auto" />
-            ) : groupedExpenses.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-                Sin gastos en el período
-              </div>
-            ) : (
-              renderChart(
-                groupedExpenses,
-                (entry) => {
-                  if (!entry?.isVarios) {
-                    navigateToTransactions(entry?.category_id ?? null, periodo, selectedAccount);
+            ) : chartMode === "categoria" ? (
+              groupedExpenses.length === 0 ? (
+                <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+                  Sin gastos en el período
+                </div>
+              ) : (
+                renderChart(
+                  groupedExpenses,
+                  (entry) => {
+                    if (!entry?.isVarios) {
+                      navigateToTransactions(entry?.category_id ?? null, periodo, selectedAccount);
+                    }
                   }
-                }
+                )
+              )
+            ) : (
+              groupedTagExpenses.length === 0 ? (
+                <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+                  Sin gastos con etiquetas en el período
+                </div>
+              ) : (
+                renderChart(groupedTagExpenses)
               )
             )}
           </CardContent>
         </Card>
 
-        {/* Transaction list */}
+        {/* Transaction list — mirrors transactions-client rows */}
         <Card className="lg:col-span-3">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -468,9 +529,9 @@ export function DashboardClient({
               <Button variant="ghost" size="sm" className="text-xs">Ver todos →</Button>
             </Link>
           </CardHeader>
-          <CardContent className="space-y-4 max-h-80 overflow-y-auto pr-1">
+          <CardContent className="max-h-96 overflow-y-auto px-0 pb-0">
             {loading ? (
-              <div className="space-y-3">
+              <div className="space-y-2 px-4 pb-4">
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
               </div>
             ) : sortedDays.length === 0 ? (
@@ -480,52 +541,74 @@ export function DashboardClient({
             ) : (
               sortedDays.slice(0, 5).map((day) => {
                 const dayTxs = byDay[day];
-                const dayIngresos = dayTxs.filter((t) => t.tipo === "ingreso").reduce((s, t) => s + Number(t.monto), 0);
-                const dayGastos   = dayTxs.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0);
+                const dayNet = dayTxs.reduce((s, t) =>
+                  t.tipo === "ingreso" ? s + Number(t.monto) :
+                  t.tipo === "gasto"   ? s - Number(t.monto) : s, 0);
 
                 return (
                   <div key={day}>
-                    <div className="flex items-center justify-between mb-2">
+                    {/* Day header */}
+                    <div className="flex items-center justify-between px-4 py-1.5 bg-muted/30">
                       <p className="text-xs font-semibold text-muted-foreground">
                         {format(new Date(day + "T12:00:00"), "EEEE d 'de' MMMM", { locale: es })
                           .replace(/^\w/, (c) => c.toUpperCase())}
                       </p>
-                      <div className="flex gap-2 text-xs">
-                        {dayIngresos > 0 && (
-                          <span className="text-green-600 dark:text-green-400 font-medium">
-                            +{formatCurrency(dayIngresos, currency)}
-                          </span>
-                        )}
-                        {dayGastos > 0 && (
-                          <span className="text-red-600 dark:text-red-400 font-medium">
-                            -{formatCurrency(dayGastos, currency)}
-                          </span>
-                        )}
-                      </div>
+                      <span className={`text-xs font-medium ${dayNet >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        Saldo: {dayNet >= 0 ? "+" : ""}{formatCurrency(dayNet, currency)}
+                      </span>
                     </div>
-                    <div className="space-y-1">
-                      {dayTxs.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`h-2 w-2 rounded-full shrink-0 ${
-                              t.tipo === "ingreso" ? "bg-green-500" :
-                              t.tipo === "gasto" ? "bg-red-500" : "bg-blue-500"
-                            }`} />
-                            <p className="text-sm truncate">
-                              {t.category?.nombre ?? (t.tipo === "transferencia" ? `→ ${t.to_account?.nombre}` : "Sin categoría")}
+
+                    {/* Transaction rows */}
+                    {dayTxs.map((t) => (
+                      <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors min-w-0">
+                        {/* Account icon */}
+                        <div className="rounded-full bg-muted shrink-0 h-8 w-8 flex items-center justify-center overflow-hidden">
+                          {t.account?.icon_url ? (
+                            <Image
+                              src={t.account.icon_url}
+                              alt={t.account?.nombre ?? ""}
+                              width={32}
+                              height={32}
+                              className="h-8 w-8 object-cover rounded-full"
+                            />
+                          ) : (
+                            <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+
+                        {/* Info block */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            {t.tipo !== "transferencia" && (
+                              <span className="shrink-0 text-muted-foreground">
+                                <DynamicCategoryIcon iconName={t.category?.icono} className="h-3 w-3" />
+                              </span>
+                            )}
+                            <p className="text-sm font-medium truncate">
+                              {t.tipo === "transferencia"
+                                ? `${t.account?.nombre} → ${t.to_account?.nombre}`
+                                : t.category?.nombre ?? "Sin categoría"}
                             </p>
                           </div>
-                          <p className={`text-sm font-semibold shrink-0 ml-2 ${
-                            t.tipo === "ingreso" ? "text-green-600 dark:text-green-400" :
-                            t.tipo === "gasto" ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"
-                          }`}>
-                            {t.tipo === "ingreso" ? "+" : t.tipo === "gasto" ? "-" : ""}
-                            {formatCurrency(Number(t.monto), t.account?.moneda ?? "ARS")}
-                          </p>
+                          {t.notas?.trim() && (
+                            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+                              Nota: {t.notas}
+                            </p>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                    <Separator className="mt-2" />
+
+                        {/* Amount */}
+                        <p className={`text-sm font-bold shrink-0 ${
+                          t.tipo === "ingreso" ? "text-green-600 dark:text-green-400" :
+                          t.tipo === "gasto"   ? "text-red-600 dark:text-red-400" :
+                          "text-violet-600 dark:text-violet-400"
+                        }`}>
+                          {t.tipo === "ingreso" ? "+" : t.tipo === "gasto" ? "-" : ""}
+                          {formatCurrency(Number(t.monto), t.account?.moneda ?? "ARS")}
+                        </p>
+                      </div>
+                    ))}
+                    <Separator />
                   </div>
                 );
               })
@@ -538,8 +621,14 @@ export function DashboardClient({
       <Dialog open={chartFullscreen} onOpenChange={setChartFullscreen}>
         <DialogContent className="max-w-3xl w-full">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between pr-8">
-              <span>Gastos por Categoría</span>
+            <DialogTitle className="flex items-center gap-3 pr-8">
+              <span>Gastos por</span>
+              <Tabs value={modalChartMode} onValueChange={(v) => setModalChartMode(v as "categoria" | "etiqueta")}>
+                <TabsList className="h-7">
+                  <TabsTrigger value="categoria" className="text-xs px-2 h-6">Categoría</TabsTrigger>
+                  <TabsTrigger value="etiqueta" className="text-xs px-2 h-6">Etiqueta</TabsTrigger>
+                </TabsList>
+              </Tabs>
             </DialogTitle>
           </DialogHeader>
 
@@ -574,27 +663,39 @@ export function DashboardClient({
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-muted-foreground self-end pb-1">
-              Hacé clic en una categoría para ver sus transacciones.
-            </p>
+            {modalChartMode === "categoria" && (
+              <p className="text-xs text-muted-foreground self-end pb-1">
+                Hacé clic en una categoría para ver sus transacciones.
+              </p>
+            )}
           </div>
 
           {/* Modal chart */}
           {modalLoading ? (
             <Skeleton className="h-96 w-full" />
-          ) : groupedModalExpenses.length === 0 ? (
-            <div className="flex items-center justify-center h-96 text-muted-foreground text-sm">
-              Sin gastos en el período
-            </div>
+          ) : modalChartMode === "categoria" ? (
+            groupedModalExpenses.length === 0 ? (
+              <div className="flex items-center justify-center h-96 text-muted-foreground text-sm">
+                Sin gastos en el período
+              </div>
+            ) : (
+              renderChart(
+                groupedModalExpenses,
+                (entry) => {
+                  if (!entry?.isVarios) {
+                    navigateToTransactions(entry?.category_id ?? null, modalPeriodo, modalAccount);
+                  }
+                },
+                380
+              )
+            )
           ) : (
-            renderChart(
-              groupedModalExpenses,
-              (entry) => {
-                if (!entry?.isVarios) {
-                  navigateToTransactions(entry?.category_id ?? null, modalPeriodo, modalAccount);
-                }
-              },
-              380
+            groupedModalTagExpenses.length === 0 ? (
+              <div className="flex items-center justify-center h-96 text-muted-foreground text-sm">
+                Sin gastos con etiquetas en el período
+              </div>
+            ) : (
+              renderChart(groupedModalTagExpenses, undefined, 380)
             )
           )}
         </DialogContent>

@@ -51,9 +51,17 @@ interface Props {
 type ExportFormat = "pdf" | "excel" | "csv";
 type ExportStep = "format" | "destination" | "email";
 
+const TX_FILTER_KEY = "monetara_tx_filters";
+const DEFAULT_FILTERS: TransactionFilters = { periodo: "mes_actual" };
+
 export function TransactionsClient({ initialTransactions, accounts, categories, tags, initialStartingBalance, initialFilters }: Props) {
   const [transactions, setTransactions] = useState(initialTransactions);
-  const [filters, setFilters] = useState<TransactionFilters>(initialFilters ?? { periodo: "mes_actual" });
+  // Always start with a safe default (matches server render) to avoid hydration mismatch.
+  // After mount, restore from localStorage unless URL-provided filters were passed.
+  const [filters, setFilters] = useState<TransactionFilters>(
+    initialFilters && Object.keys(initialFilters).length > 0 ? initialFilters : DEFAULT_FILTERS
+  );
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -101,12 +109,38 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
       ]);
       setTransactions(data);
       setFilters(newFilters);
+      try { localStorage.setItem(TX_FILTER_KEY, JSON.stringify(newFilters)); } catch {}
       setStartingBalance(newStartingBalance);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    try { localStorage.removeItem(TX_FILTER_KEY); } catch {}
+    applyFilters({ periodo: "mes_actual" });
+  }, [applyFilters]);
+
+  // Restore filters from localStorage after mount (two-pass hydration pattern).
+  // URL-provided `initialFilters` always take priority and are saved to localStorage.
+  useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+      try { localStorage.setItem(TX_FILTER_KEY, JSON.stringify(initialFilters)); } catch {}
+      setFiltersHydrated(true);
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(TX_FILTER_KEY);
+      if (stored) {
+        const storedFilters = JSON.parse(stored) as TransactionFilters;
+        applyFilters(storedFilters);
+        return;
+      }
+    } catch {}
+    setFiltersHydrated(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDelete = (id: string) => {
@@ -239,7 +273,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
             </Button>
           </Link>
           <Link href="/transactions/new?tipo=transferencia">
-            <Button size="sm" className="bg-[#1f628e] hover:bg-[#0e415f] text-white gap-1.5 h-8 px-3 text-xs">
+            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5 h-8 px-3 text-xs">
               <ArrowLeftRight className="h-3.5 w-3.5" />
               Transferencia
             </Button>
@@ -479,7 +513,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                 variant="ghost"
                 size="sm"
                 className="text-xs"
-                onClick={() => { setCatSearch(""); applyFilters({ periodo: "mes_actual" }); }}
+                onClick={() => { setCatSearch(""); clearFilters(); }}
               >
                 <X className="h-3.5 w-3.5 mr-1" />
                 Limpiar filtros
