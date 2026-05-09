@@ -7,8 +7,8 @@ import { format, subMonths, startOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import * as LucideIcons from "lucide-react";
 import {
-  Plus, Filter, Download, Trash2, Pencil, ArrowUpCircle,
-  ArrowDownCircle, ArrowLeftRight, ChevronDown, X, Loader2,
+  Plus, Filter, Download, Trash2, Pencil, ArrowLeftRight,
+  ChevronDown, X, Loader2,
   Tag as TagIcon, FolderOpen, Wallet, Mail, FileText, Sheet,
   FileSpreadsheet,
 } from "lucide-react";
@@ -526,45 +526,34 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                     {format(new Date(day + "T12:00:00"), "EEEE, d 'de' MMMM", { locale: es })
                       .replace(/^\w/, (c) => c.toUpperCase())}
                   </h3>
-                  <div className="flex items-center gap-2 text-xs font-medium">
-                    {dayIngresos > 0 && (
-                      <span className="text-green-600 dark:text-green-400">
-                        +{formatCurrency(dayIngresos, "ARS")}
-                      </span>
-                    )}
-                    {dayGastos > 0 && (
-                      <span className="text-red-600 dark:text-red-400">
-                        -{formatCurrency(dayGastos, "ARS")}
-                      </span>
-                    )}
-                    <span className={`font-bold ${saldoAlCierre >= 0 ? "text-foreground" : "text-red-600 dark:text-red-400"}`}>
-                      = {formatCurrency(saldoAlCierre, "ARS")}
-                    </span>
-                  </div>
+                  <span className={`text-xs font-bold ${saldoAlCierre >= 0 ? "text-foreground" : "text-red-600 dark:text-red-400"}`}>
+                    Saldo: {formatCurrency(saldoAlCierre, "ARS")}
+                  </span>
                 </div>
 
                 <Card>
                   <CardContent className="p-0 divide-y overflow-x-auto">
                     {dayTxs.map((t) => (
-                      <div key={t.id} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-muted/30 transition-colors group min-w-0">
-                        {/* Type icon */}
-                        <div className={`rounded-full p-2 shrink-0 ${
-                          t.tipo === "ingreso" ? "bg-green-100 dark:bg-green-900/30" :
-                          t.tipo === "gasto" ? "bg-red-100 dark:bg-red-900/30" :
-                          "bg-blue-100 dark:bg-blue-900/30"
-                        }`}>
-                          {t.tipo === "ingreso" ? (
-                            <ArrowUpCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                          ) : t.tipo === "gasto" ? (
-                            <ArrowDownCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      <div key={t.id} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-muted/30 transition-colors min-w-0">
+                        {/* Account icon (replaces type indicator) */}
+                        <div className="rounded-full bg-muted shrink-0 h-9 w-9 flex items-center justify-center overflow-hidden">
+                          {t.account?.icon_url ? (
+                            <Image
+                              src={t.account.icon_url}
+                              alt={t.account?.nombre ?? ""}
+                              width={36}
+                              height={36}
+                              className="h-9 w-9 object-cover rounded-full"
+                            />
                           ) : (
-                            <ArrowLeftRight className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                            <Wallet className="h-4 w-4 text-muted-foreground" />
                           )}
                         </div>
 
-                        {/* Info */}
+                        {/* Info block */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
+                          {/* Line 1: category icon + name + tags */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {t.tipo !== "transferencia" && (
                               <span className="shrink-0 text-muted-foreground">
                                 <DynamicCategoryIcon iconName={t.category?.icono} className="h-3.5 w-3.5" />
@@ -586,48 +575,45 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                               </span>
                             ))}
                           </div>
-                          {/* Notes */}
-                          {t.notas && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{t.notas}</p>
+
+                          {/* Line 2: account name (text only, no icon) */}
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            {t.account?.nombre}
+                          </p>
+
+                          {/* Line 3: notes — only when not empty */}
+                          {t.notas?.trim() && (
+                            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+                              Nota: {t.notas}
+                            </p>
                           )}
-                          {/* Account row */}
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {t.account?.icon_url ? (
-                              <Image
-                                src={t.account.icon_url}
-                                alt={t.account.nombre}
-                                width={14}
-                                height={14}
-                                className="rounded-full h-3.5 w-3.5 object-cover"
-                              />
-                            ) : (
-                              <Wallet className="h-3 w-3 text-muted-foreground" />
-                            )}
-                            <span className="text-xs text-muted-foreground">{t.account?.nombre}</span>
-                          </div>
                         </div>
 
                         {/* Amount */}
                         <p className={`text-sm font-bold shrink-0 ${
                           t.tipo === "ingreso" ? "text-green-600 dark:text-green-400" :
-                          t.tipo === "gasto" ? "text-red-600 dark:text-red-400" :
+                          t.tipo === "gasto"   ? "text-red-600 dark:text-red-400" :
                           "text-blue-600 dark:text-blue-400"
                         }`}>
                           {t.tipo === "ingreso" ? "+" : t.tipo === "gasto" ? "-" : ""}
                           {formatCurrency(Number(t.monto), t.account?.moneda ?? "ARS")}
                         </p>
 
-                        {/* Actions */}
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        {/* Actions — always visible, red on hover */}
+                        <div className="flex gap-0.5 shrink-0">
                           <Link href={`/transactions/${t.id}/edit`}>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                            >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                           </Link>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 hover:text-destructive"
+                            className="h-8 w-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
                             onClick={() => setDeleteId(t.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
