@@ -388,7 +388,10 @@ export function DashboardClient({
           </Button>
         </Link>
         <Link href="/transactions/new?tipo=transferencia">
-          <Button size="xl" className="w-full gap-2 h-14 bg-violet-600 hover:bg-violet-700 text-white">
+          <Button
+            size="xl"
+            className="w-full gap-2 h-14 bg-[#0e415f] hover:bg-[#1f628e] text-white dark:bg-[#f4f0e0] dark:hover:bg-[#e8e4d4] dark:text-[#0e415f]"
+          >
             <ArrowLeftRight className="h-5 w-5" />
             <span className="hidden sm:inline">⇄ Transferencia</span>
             <span className="sm:hidden">Transfer.</span>

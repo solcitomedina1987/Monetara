@@ -10,16 +10,22 @@ interface Props {
     periodo?: string;
     account_id?: string;
     category_id?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
   }>;
 }
 
 export default async function TransactionsPage({ searchParams }: Props) {
   const params = await searchParams;
 
+  const periodo = (params.periodo as DashboardPeriod) ?? "mes_actual";
   const initialFilters: TransactionFilters = {
-    periodo: (params.periodo as DashboardPeriod) ?? "mes_actual",
-    account_id: params.account_id ?? undefined,
+    periodo,
+    account_id:  params.account_id  ?? undefined,
     category_id: params.category_id ?? undefined,
+    ...(periodo === "personalizado" && params.fechaDesde && params.fechaHasta
+      ? { fechaDesde: params.fechaDesde, fechaHasta: params.fechaHasta }
+      : {}),
   };
 
   const [transactions, accounts, categories, tags, startingBalance] = await Promise.all([

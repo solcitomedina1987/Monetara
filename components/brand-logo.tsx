@@ -24,7 +24,9 @@ const LOGO_SRCS = {
   icon: {
     light:    "/logo-monetara-logo.png",
     dark:     "/logo-monetara-logo-dark.png",
-    monetara: "/logo-monetara-logo.png",
+    // Dark variant also on Monetara: the sidebar bg is #0e415f (dark blue),
+    // so the dark (light-colored) logo gives optimal contrast.
+    monetara: "/logo-monetara-logo-dark.png",
   },
 } as const;
 

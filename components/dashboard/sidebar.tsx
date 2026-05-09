@@ -33,6 +33,7 @@ export function Sidebar({ onClose }: SidebarProps) {
   useEffect(() => setMounted(true), []);
 
   const isMonetara = mounted && resolvedTheme === "monetara";
+  const isDark     = mounted && resolvedTheme === "dark";
 
   return (
     <div
@@ -144,11 +145,21 @@ export function Sidebar({ onClose }: SidebarProps) {
           - Gasto
         </Link>
 
-        {/* Transferencia — violet en todos los temas */}
+        {/* Transferencia — fondo transparente, hover temático */}
         <Link
           href="/transactions/new?tipo=transferencia"
           onClick={onClose}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 transition-colors"
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            isMonetara
+              // sidebar bg = #0e415f (dark blue) → text white/violet, hover cream
+              ? "text-violet-200 hover:bg-[#f4f0e0] hover:text-[#0e415f]"
+              : isDark
+              // dark sidebar → text violet-400, hover cream
+              ? "text-violet-400 hover:bg-[#f4f0e0] hover:text-[#0e415f]"
+              // light sidebar → text violet-600, hover deep blue + white text
+              : "text-violet-600 hover:bg-[#0e415f] hover:text-white"
+          )}
         >
           <ArrowLeftRight className="h-4 w-4" />
           ⇄ Transferencia

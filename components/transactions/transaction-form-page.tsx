@@ -138,6 +138,25 @@ export function TransactionFormPage({
     }
   };
 
+  /** Build /transactions URL preserving any filters saved in localStorage. */
+  function buildReturnUrl(): string {
+    try {
+      const stored = localStorage.getItem("monetara_tx_filters");
+      if (!stored) return "/transactions";
+      const f = JSON.parse(stored) as Record<string, string | undefined>;
+      const params = new URLSearchParams();
+      if (f.periodo && f.periodo !== "mes_actual") params.set("periodo", f.periodo);
+      if (f.account_id)  params.set("account_id",  f.account_id);
+      if (f.category_id) params.set("category_id", f.category_id);
+      if (f.fechaDesde)  params.set("fechaDesde",  f.fechaDesde);
+      if (f.fechaHasta)  params.set("fechaHasta",  f.fechaHasta);
+      const qs = params.toString();
+      return qs ? `/transactions?${qs}` : "/transactions";
+    } catch {
+      return "/transactions";
+    }
+  }
+
   const onSubmit = (data: any) => {
     if (!amountValue || amountValue <= 0) {
       toast({ variant: "destructive", title: "Ingresá un monto válido" });
@@ -164,7 +183,7 @@ export function TransactionFormPage({
               : "Transferencia registrada",
           variant: tipo === "ingreso" ? "success" : "default",
         });
-        router.push("/transactions");
+        router.push(buildReturnUrl());
       } catch (err: any) {
         toast({ variant: "destructive", title: "Error", description: err.message });
       }

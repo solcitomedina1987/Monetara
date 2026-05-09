@@ -273,7 +273,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
             </Button>
           </Link>
           <Link href="/transactions/new?tipo=transferencia">
-            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5 h-8 px-3 text-xs">
+            <Button size="sm" className="bg-[#0e415f] hover:bg-[#1f628e] text-white dark:bg-[#f4f0e0] dark:hover:bg-[#e8e4d4] dark:text-[#0e415f] gap-1.5 h-8 px-3 text-xs">
               <ArrowLeftRight className="h-3.5 w-3.5" />
               Transferencia
             </Button>
