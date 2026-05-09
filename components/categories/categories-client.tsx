@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import * as LucideIcons from "lucide-react";
 import {
-  Plus, Pencil, PowerOff, FolderOpen, Search, Loader2, AlertTriangle, Smile, Power,
+  Plus, Pencil, PowerOff, FolderOpen, Search, Loader2, AlertTriangle, Power,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ const ALL_LUCIDE_ICONS: string[] = Object.keys(LucideIcons).filter((key) => {
   return typeof val === "function";
 });
 
-const ICONS_PER_PAGE = 88; // 8 columns × 11 rows
+const ICONS_PER_PAGE = 100; // 10 cols (desktop) × 10 rows
 
 function DynamicIcon({ name, className }: { name: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
@@ -50,7 +50,6 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
-  const [iconSearch, setIconSearch] = useState("");
   const [iconPage, setIconPage] = useState(0);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deactivatingCategory, setDeactivatingCategory] = useState<Category | null>(null);
@@ -65,18 +64,12 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
     c.nombre.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredIcons = useMemo(
-    () => ALL_LUCIDE_ICONS.filter((icon) => icon.toLowerCase().includes(iconSearch.toLowerCase())),
-    [iconSearch]
-  );
-
-  const totalIconPages = Math.ceil(filteredIcons.length / ICONS_PER_PAGE);
-  const pagedIcons = filteredIcons.slice(iconPage * ICONS_PER_PAGE, (iconPage + 1) * ICONS_PER_PAGE);
+  const totalIconPages = Math.ceil(ALL_LUCIDE_ICONS.length / ICONS_PER_PAGE);
+  const pagedIcons = ALL_LUCIDE_ICONS.slice(iconPage * ICONS_PER_PAGE, (iconPage + 1) * ICONS_PER_PAGE);
 
   const openCreate = () => {
     setEditingCategory(null);
     setSelectedIcon(null);
-    setIconSearch("");
     setIconPage(0);
     reset({ nombre: "" });
     setDialogOpen(true);
@@ -85,15 +78,15 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
   const openEdit = (cat: Category) => {
     setEditingCategory(cat);
     setSelectedIcon(cat.icono ?? null);
-    setIconSearch("");
-    setIconPage(0);
+    // Jump to the page that contains the currently selected icon
+    if (cat.icono) {
+      const idx = ALL_LUCIDE_ICONS.indexOf(cat.icono);
+      setIconPage(idx >= 0 ? Math.floor(idx / ICONS_PER_PAGE) : 0);
+    } else {
+      setIconPage(0);
+    }
     reset({ nombre: cat.nombre });
     setDialogOpen(true);
-  };
-
-  const handleIconSearch = (val: string) => {
-    setIconSearch(val);
-    setIconPage(0);
   };
 
   const onSubmit = (data: FormData) => {
@@ -250,37 +243,29 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
             </div>
 
             <div className="space-y-2">
-              {/* Icon label + current selection */}
+              {/* Header: label + selected icon badge */}
               <div className="flex items-center justify-between">
                 <Label>Ícono</Label>
-                {selectedIcon && (
-                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {selectedIcon ? (
+                  <span className="flex items-center gap-1.5 rounded-full border bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                     <DynamicIcon name={selectedIcon} className="h-3.5 w-3.5" />
-                    <span className="font-medium">{selectedIcon}</span>
+                    {selectedIcon}
                     <button
                       type="button"
-                      className="text-destructive hover:underline"
+                      aria-label="Quitar ícono"
+                      className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
                       onClick={() => setSelectedIcon(null)}
                     >
-                      quitar
+                      ×
                     </button>
                   </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sin ícono seleccionado</span>
                 )}
               </div>
 
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder={`Buscar entre ${ALL_LUCIDE_ICONS.length.toLocaleString()} íconos...`}
-                  value={iconSearch}
-                  onChange={(e) => handleIconSearch(e.target.value)}
-                  className="pl-8 h-8 text-sm"
-                />
-              </div>
-
-              {/* Icon grid */}
-              <div className="grid grid-cols-8 gap-1 rounded-md border p-2 bg-muted/20" style={{ minHeight: "9rem" }}>
+              {/* Icon grid — 10 cols desktop / 5 cols mobile */}
+              <div className="grid grid-cols-5 sm:grid-cols-10 gap-1 rounded-lg border bg-muted/20 p-2">
                 {pagedIcons.map((iconName) => {
                   const isSelected = selectedIcon === iconName;
                   return (
@@ -288,52 +273,51 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
                       key={iconName}
                       type="button"
                       title={iconName}
+                      aria-label={iconName}
                       onClick={() => setSelectedIcon(isSelected ? null : iconName)}
-                      className={`flex items-center justify-center rounded-md p-2 transition-colors hover:bg-accent ${
-                        isSelected ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""
+                      className={`flex items-center justify-center rounded-md p-2 transition-all hover:scale-110 hover:bg-accent ${
+                        isSelected
+                          ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-1 hover:bg-primary/90 scale-110"
+                          : "text-foreground/70"
                       }`}
                     >
-                      <DynamicIcon name={iconName} className="h-4 w-4" />
+                      <DynamicIcon name={iconName} className="h-5 w-5" />
                     </button>
                   );
                 })}
-                {filteredIcons.length === 0 && (
-                  <div className="col-span-8 flex items-center justify-center py-6 text-xs text-muted-foreground">
-                    <Smile className="h-4 w-4 mr-1" /> Sin resultados para "{iconSearch}"
-                  </div>
-                )}
               </div>
 
-              {/* Pagination */}
-              {totalIconPages > 1 && (
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    {filteredIcons.length.toLocaleString()} íconos · página {iconPage + 1} de {totalIconPages}
-                  </span>
-                  <div className="flex gap-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-6 w-6"
-                      disabled={iconPage === 0}
-                      onClick={() => setIconPage((p) => Math.max(0, p - 1))}
-                    >
-                      <ChevronLeft className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-6 w-6"
-                      disabled={iconPage >= totalIconPages - 1}
-                      onClick={() => setIconPage((p) => Math.min(totalIconPages - 1, p + 1))}
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+              {/* Pagination controls */}
+              <div className="flex items-center justify-between pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs gap-1"
+                  disabled={iconPage === 0}
+                  onClick={() => setIconPage((p) => Math.max(0, p - 1))}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Anterior
+                </Button>
+
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  Página {iconPage + 1} de {totalIconPages}
+                  <span className="hidden sm:inline"> · {ALL_LUCIDE_ICONS.length.toLocaleString()} íconos</span>
+                </span>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs gap-1"
+                  disabled={iconPage >= totalIconPages - 1}
+                  onClick={() => setIconPage((p) => Math.min(totalIconPages - 1, p + 1))}
+                >
+                  Siguiente
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
 
             <DialogFooter>
