@@ -1,7 +1,7 @@
 import type { CellInput } from "jspdf-autotable";
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, startOfYear } from "date-fns";
 import { es } from "date-fns/locale";
-import type { TransactionWithRelations, TransactionFilters, DashboardPeriod } from "@/lib/types";
+import type { TransactionWithRelations, TransactionFilters, TransactionPeriod } from "@/lib/types";
 import { CURRENCIES } from "@/lib/types";
 
 function formatAmount(monto: number, tipo: string): string {
@@ -86,6 +86,7 @@ function currencySymbolForCode(code: string): string {
 function getExportPeriodRange(filters?: TransactionFilters): [string, string] | null {
   const now = new Date();
   const periodo = filters?.periodo ?? "mes_actual";
+  if (periodo === "desde_el_inicio") return null;
 
   if (periodo === "mes_actual") {
     return [format(startOfMonth(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
@@ -109,19 +110,20 @@ function getExportPeriodRange(filters?: TransactionFilters): [string, string] | 
   return null;
 }
 
-const PERIOD_LABELS: Record<DashboardPeriod, string> = {
+const PERIOD_LABELS: Record<TransactionPeriod, string> = {
   mes_actual: "Mes actual",
   mes_anterior: "Mes anterior",
   ultimos_3_meses: "Últimos 3 meses",
   año_actual: "Año actual",
   ultimo_año: "Último año",
   personalizado: "Período personalizado",
+  desde_el_inicio: "Desde el inicio",
 };
 
 function formatPeriodReportTitle(filters?: TransactionFilters): string {
   const periodo = filters?.periodo ?? "mes_actual";
   const range = getExportPeriodRange(filters);
-  const label = PERIOD_LABELS[periodo as DashboardPeriod] ?? "Período";
+  const label = PERIOD_LABELS[periodo as TransactionPeriod] ?? "Período";
 
   if (range) {
     const [a, b] = range;

@@ -6,9 +6,12 @@ import type { Transaction, TransactionWithRelations, TransactionFilters } from "
 import { balanceDeltaForTransaction } from "@/lib/transaction-balance";
 import { startOfMonth, endOfMonth, subMonths, startOfYear, format } from "date-fns";
 
-/** Returns [fechaDesde, fechaHasta] for the given filter period. */
+/** Returns [fechaDesde, fechaHasta] for the given filter period. `null` = sin filtro de fechas. */
 function getPeriodDates(filters?: TransactionFilters): [string, string] | null {
   const now = new Date();
+  if (filters?.periodo === "desde_el_inicio") {
+    return null;
+  }
   if (!filters?.periodo || filters.periodo === "mes_actual") {
     return [format(startOfMonth(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
   }
@@ -46,8 +49,26 @@ export async function getTransactions(filters?: TransactionFilters): Promise<Tra
     .order("fecha", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (filters?.tipo && filters.tipo !== "todos") {
-    query = query.eq("tipo", filters.tipo);
+  const useLegacyTipo =
+    filters?.showIngresos === undefined &&
+    filters?.showGastos === undefined &&
+    filters?.tipo &&
+    filters.tipo !== "todos";
+
+  if (useLegacyTipo) {
+    query = query.eq("tipo", filters.tipo as "ingreso" | "gasto" | "transferencia");
+  } else {
+    const si = filters?.showIngresos !== false;
+    const sg = filters?.showGastos !== false;
+    if (!si && !sg) {
+      return [];
+    }
+    if (si && !sg) {
+      query = query.eq("tipo", "ingreso");
+    } else if (!si && sg) {
+      query = query.eq("tipo", "gasto");
+    }
+    /* si && sg: sin filtro por tipo (ingresos, gastos y transferencias) */
   }
 
   if (filters?.account_id) {

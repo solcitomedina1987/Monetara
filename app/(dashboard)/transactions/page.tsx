@@ -3,7 +3,7 @@ import { getActiveAccounts } from "@/app/actions/accounts";
 import { getActiveCategories } from "@/app/actions/categories";
 import { getActiveTags } from "@/app/actions/tags";
 import { TransactionsClient } from "@/components/transactions/transactions-client";
-import type { DashboardPeriod, TransactionFilters } from "@/lib/types";
+import type { TransactionPeriod, TransactionFilters } from "@/lib/types";
 
 interface Props {
   searchParams: Promise<{
@@ -18,10 +18,19 @@ interface Props {
 export default async function TransactionsPage({ searchParams }: Props) {
   const params = await searchParams;
 
-  const periodo = (params.periodo as DashboardPeriod) ?? "mes_actual";
-  const initialFilters: TransactionFilters = {
+  const hasUrlFilters =
+    params.periodo !== undefined ||
+    params.account_id !== undefined ||
+    params.category_id !== undefined ||
+    params.fechaDesde !== undefined ||
+    params.fechaHasta !== undefined;
+
+  const periodo = (params.periodo as TransactionPeriod) ?? "mes_actual";
+  const filtersForFetch: TransactionFilters = {
     periodo,
-    account_id:  params.account_id  ?? undefined,
+    showIngresos: true,
+    showGastos: true,
+    account_id: params.account_id ?? undefined,
     category_id: params.category_id ?? undefined,
     ...(periodo === "personalizado" && params.fechaDesde && params.fechaHasta
       ? { fechaDesde: params.fechaDesde, fechaHasta: params.fechaHasta }
@@ -29,11 +38,11 @@ export default async function TransactionsPage({ searchParams }: Props) {
   };
 
   const [transactions, accounts, categories, tags, referenceTotalBalance] = await Promise.all([
-    getTransactions(initialFilters),
+    getTransactions(filtersForFetch),
     getActiveAccounts(),
     getActiveCategories(),
     getActiveTags(),
-    getTotalBalance(initialFilters.account_id),
+    getTotalBalance(filtersForFetch.account_id),
   ]);
 
   return (
@@ -43,7 +52,7 @@ export default async function TransactionsPage({ searchParams }: Props) {
       categories={categories}
       tags={tags}
       referenceTotalBalance={referenceTotalBalance}
-      initialFilters={initialFilters}
+      initialFilters={hasUrlFilters ? filtersForFetch : undefined}
     />
   );
 }

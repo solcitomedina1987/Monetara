@@ -7,8 +7,8 @@ import { format, subMonths, startOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import * as LucideIcons from "lucide-react";
 import {
-  Plus, Minus, Filter, Download, Trash2, Pencil, ArrowLeftRight,
-  ChevronDown, X, Loader2,
+  Plus, Download, Trash2, Pencil, ArrowLeftRight,
+  X, Loader2,
   Tag as TagIcon, FolderOpen, Wallet, Mail, FileText, Sheet,
   FileSpreadsheet, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
@@ -17,10 +17,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
@@ -35,7 +35,14 @@ import {
   type RunningBalanceScope,
 } from "@/lib/transaction-balance";
 import { exportToPDF, exportToExcel, exportToCSV } from "@/lib/export";
-import type { Account, Category, Tag, TransactionWithRelations, TransactionFilters } from "@/lib/types";
+import type {
+  Account,
+  Category,
+  Tag,
+  TransactionWithRelations,
+  TransactionFilters,
+  TransactionPeriod,
+} from "@/lib/types";
 
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
@@ -59,7 +66,65 @@ type ExportFormat = "pdf" | "excel" | "csv";
 type ExportStep = "format" | "destination" | "email";
 
 const TX_FILTER_KEY = "monetara_tx_filters";
-const DEFAULT_FILTERS: TransactionFilters = { periodo: "mes_actual" };
+
+const DEFAULT_FILTERS: TransactionFilters = {
+  periodo: "mes_actual",
+  showIngresos: true,
+  showGastos: true,
+};
+
+const VALID_PERIODS = new Set<string>([
+  "mes_actual",
+  "mes_anterior",
+  "ultimos_3_meses",
+  "año_actual",
+  "ultimo_año",
+  "personalizado",
+  "desde_el_inicio",
+]);
+
+function normalizeStoredTransactionFilters(raw: unknown): TransactionFilters {
+  const out: TransactionFilters = { ...DEFAULT_FILTERS };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const o = raw as Record<string, unknown>;
+
+  if (typeof o.periodo === "string" && VALID_PERIODS.has(o.periodo)) {
+    out.periodo = o.periodo as TransactionPeriod;
+  }
+  if (typeof o.fechaDesde === "string") out.fechaDesde = o.fechaDesde;
+  if (typeof o.fechaHasta === "string") out.fechaHasta = o.fechaHasta;
+  if (typeof o.account_id === "string") out.account_id = o.account_id;
+  if (typeof o.category_id === "string") out.category_id = o.category_id;
+  if (Array.isArray(o.tag_ids)) {
+    out.tag_ids = o.tag_ids.filter((id): id is string => typeof id === "string");
+  }
+
+  const hasExplicitShow =
+    Object.prototype.hasOwnProperty.call(o, "showIngresos") ||
+    Object.prototype.hasOwnProperty.call(o, "showGastos");
+
+  if (hasExplicitShow) {
+    out.showIngresos =
+      typeof o.showIngresos === "boolean" ? o.showIngresos : DEFAULT_FILTERS.showIngresos!;
+    out.showGastos =
+      typeof o.showGastos === "boolean" ? o.showGastos : DEFAULT_FILTERS.showGastos!;
+  } else if (o.tipo === "ingreso") {
+    out.showIngresos = true;
+    out.showGastos = false;
+  } else if (o.tipo === "gasto") {
+    out.showIngresos = false;
+    out.showGastos = true;
+  }
+
+  return out;
+}
+
+function persistTxFilters(f: TransactionFilters) {
+  try {
+    const { tipo: _omit, ...rest } = f;
+    localStorage.setItem(TX_FILTER_KEY, JSON.stringify(rest));
+  } catch {}
+}
 
 export function TransactionsClient({
   initialTransactions,
@@ -70,13 +135,9 @@ export function TransactionsClient({
   initialFilters,
 }: Props) {
   const [transactions, setTransactions] = useState(initialTransactions);
-  // Always start with a safe default (matches server render) to avoid hydration mismatch.
-  // After mount, restore from localStorage unless URL-provided filters were passed.
-  const [filters, setFilters] = useState<TransactionFilters>(
-    initialFilters && Object.keys(initialFilters).length > 0 ? initialFilters : DEFAULT_FILTERS
+  const [filters, setFilters] = useState<TransactionFilters>(() =>
+    initialFilters ? normalizeStoredTransactionFilters(initialFilters) : DEFAULT_FILTERS
   );
-  const [filtersHydrated, setFiltersHydrated] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(false);
@@ -127,7 +188,7 @@ export function TransactionsClient({
       ]);
       setTransactions(data);
       setFilters(newFilters);
-      try { localStorage.setItem(TX_FILTER_KEY, JSON.stringify(newFilters)); } catch {}
+      persistTxFilters(newFilters);
       setReferenceTotalBalance(newRef);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
@@ -138,27 +199,25 @@ export function TransactionsClient({
 
   const clearFilters = useCallback(() => {
     try { localStorage.removeItem(TX_FILTER_KEY); } catch {}
-    applyFilters({ periodo: "mes_actual" });
+    setCatSearch("");
+    setTagSearch("");
+    applyFilters({ ...DEFAULT_FILTERS });
   }, [applyFilters]);
 
-  // Restore filters from localStorage after mount (two-pass hydration pattern).
-  // URL-provided `initialFilters` always take priority and are saved to localStorage.
+  /** Sin query params en la URL: recuperar filtros de localStorage tras montar. Con URL: persistir sin refetch. */
   useEffect(() => {
-    if (initialFilters && Object.keys(initialFilters).length > 0) {
-      try { localStorage.setItem(TX_FILTER_KEY, JSON.stringify(initialFilters)); } catch {}
-      setFiltersHydrated(true);
+    if (initialFilters) {
+      const normalized = normalizeStoredTransactionFilters(initialFilters);
+      persistTxFilters(normalized);
       return;
     }
     try {
       const stored = localStorage.getItem(TX_FILTER_KEY);
       if (stored) {
-        const storedFilters = JSON.parse(stored) as TransactionFilters;
-        applyFilters(storedFilters);
-        return;
+        applyFilters(normalizeStoredTransactionFilters(JSON.parse(stored)));
       }
     } catch {}
-    setFiltersHydrated(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDelete = (id: string) => {
@@ -265,16 +324,8 @@ export function TransactionsClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Movimientos</h1>
-          <p className="text-sm text-muted-foreground">{transactions.length} movimientos</p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          {/* Filters toggle */}
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="h-4 w-4 mr-2" />
-            Filtros
-            <ChevronDown className={`h-4 w-4 ml-1 transition-transform ${showFilters ? "rotate-180" : ""}`} />
-          </Button>
-
           {/* File actions group */}
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             <Download className="h-4 w-4 mr-1.5 rotate-180" />
@@ -307,247 +358,263 @@ export function TransactionsClient({
         </div>
       </div>
 
-      {/* Filter panel */}
-      {showFilters && (
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            {/* Row 1: Tipo + Período + Cuenta */}
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Tipo</Label>
-                <Select
-                  value={filters.tipo ?? "todos"}
-                  onValueChange={(v) => applyFilters({ ...filters, tipo: v as any })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todo</SelectItem>
-                    <SelectItem value="ingreso">Ingresos</SelectItem>
-                    <SelectItem value="gasto">Gastos</SelectItem>
-                    <SelectItem value="transferencia">Transferencias</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Período</Label>
-                <Select
-                  value={filters.periodo ?? "mes_actual"}
-                  onValueChange={(v) => applyFilters({ ...filters, periodo: v as any })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mes_actual">Mes actual</SelectItem>
-                    <SelectItem value="mes_anterior">Mes anterior</SelectItem>
-                    <SelectItem value="ultimos_3_meses">Últimos 3 meses</SelectItem>
-                    <SelectItem value="año_actual">Año actual</SelectItem>
-                    <SelectItem value="ultimo_año">Último año</SelectItem>
-                    <SelectItem value="personalizado">Período personalizado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Cuenta</Label>
-                <Select
-                  value={filters.account_id ?? "todas"}
-                  onValueChange={(v) => applyFilters({ ...filters, account_id: v === "todas" ? undefined : v })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todas">Todas</SelectItem>
-                    {accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* Barra de filtros (siempre visible) */}
+      <Card>
+        <CardContent className="pt-4 pb-4 space-y-3">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1 min-w-[10rem] flex-1 basis-[min(100%,12rem)]">
+              <Label className="text-xs text-muted-foreground">Cuenta</Label>
+              <Select
+                value={filters.account_id ?? "todas"}
+                onValueChange={(v) =>
+                  applyFilters({ ...filters, account_id: v === "todas" ? undefined : v })
+                }
+              >
+                <SelectTrigger className="h-8 text-xs w-full min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Custom date range */}
-            {filters.periodo === "personalizado" && (
-              <div className="grid gap-3 grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Desde</Label>
-                  <Input
-                    type="date"
-                    className="h-8 text-xs"
-                    value={filters.fechaDesde ?? ""}
-                    onChange={(e) => applyFilters({ ...filters, fechaDesde: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Hasta</Label>
-                  <Input
-                    type="date"
-                    className="h-8 text-xs"
-                    value={filters.fechaHasta ?? ""}
-                    onChange={(e) => applyFilters({ ...filters, fechaHasta: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Row 2: Categoría + Etiquetas (same row on md+) */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {/* Category combobox */}
-              <div className="space-y-1">
-                <Label className="text-xs">Categoría</Label>
-                <div className="relative">
-                  <Input
-                    ref={catInputRef}
-                    className="h-8 text-xs pr-7"
-                    placeholder={selectedCategory ? selectedCategory.nombre : "Buscar categoría..."}
-                    value={catSearch}
-                    onChange={(e) => { setCatSearch(e.target.value); setCatDropdownOpen(true); }}
-                    onFocus={() => setCatDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setCatDropdownOpen(false), 150)}
-                  />
-                  {filters.category_id && (
+            <div className="space-y-1 min-w-[10rem] flex-1 basis-[min(100%,13rem)]">
+              <Label className="text-xs text-muted-foreground">Categorías</Label>
+              <div className="relative">
+                <Input
+                  ref={catInputRef}
+                  className="h-8 text-xs pr-7"
+                  placeholder={selectedCategory ? selectedCategory.nombre : "Buscar categoría..."}
+                  value={catSearch}
+                  onChange={(e) => {
+                    setCatSearch(e.target.value);
+                    setCatDropdownOpen(true);
+                  }}
+                  onFocus={() => setCatDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setCatDropdownOpen(false), 150)}
+                />
+                {filters.category_id && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setCatSearch("");
+                      applyFilters({ ...filters, category_id: undefined });
+                    }}
+                  >
+                    <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                  </button>
+                )}
+                {catDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover shadow-md">
                     <button
                       type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2"
+                      className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors text-muted-foreground"
                       onMouseDown={(e) => {
                         e.preventDefault();
                         setCatSearch("");
+                        setCatDropdownOpen(false);
                         applyFilters({ ...filters, category_id: undefined });
                       }}
                     >
-                      <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                      Todas las categorías
                     </button>
-                  )}
-                  {catDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover shadow-md">
-                      <button
-                        type="button"
-                        className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors text-muted-foreground"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setCatSearch("");
-                          setCatDropdownOpen(false);
-                          applyFilters({ ...filters, category_id: undefined });
-                        }}
-                      >
-                        Todas las categorías
-                      </button>
-                      {categories
-                        .filter((c) => c.nombre.toLowerCase().includes(catSearch.toLowerCase()))
-                        .map((cat) => (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setCatSearch("");
-                              setCatDropdownOpen(false);
-                              applyFilters({ ...filters, category_id: cat.id });
-                            }}
-                          >
-                            <DynamicCategoryIcon iconName={cat.icono} className="h-3 w-3 shrink-0" />
-                            {cat.nombre}
-                          </button>
-                        ))}
-                      {categories.filter((c) => c.nombre.toLowerCase().includes(catSearch.toLowerCase())).length === 0 && (
-                        <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {selectedCategory && !catSearch && (
-                  <p className="text-xs text-primary truncate">{selectedCategory.nombre}</p>
-                )}
-              </div>
-
-              {/* Tag searchable filter */}
-              <div className="space-y-1">
-                <Label className="text-xs">Etiquetas</Label>
-                {(filters.tag_ids ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    {(filters.tag_ids ?? []).map((id) => {
-                      const tag = tags.find((t) => t.id === id);
-                      if (!tag) return null;
-                      return (
+                    {categories
+                      .filter((c) => c.nombre.toLowerCase().includes(catSearch.toLowerCase()))
+                      .map((cat) => (
                         <button
-                          key={id}
+                          key={cat.id}
                           type="button"
+                          className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            const newIds = (filters.tag_ids ?? []).filter((tid) => tid !== id);
-                            applyFilters({ ...filters, tag_ids: newIds.length ? newIds : undefined });
+                            setCatSearch("");
+                            setCatDropdownOpen(false);
+                            applyFilters({ ...filters, category_id: cat.id });
                           }}
-                          className="text-xs px-2 py-0.5 rounded-full bg-primary text-primary-foreground flex items-center gap-1"
                         >
-                          {tag.nombre}
-                          <X className="h-2.5 w-2.5" />
+                          <DynamicCategoryIcon iconName={cat.icono} className="h-3 w-3 shrink-0" />
+                          {cat.nombre}
                         </button>
-                      );
-                    })}
+                      ))}
+                    {categories.filter((c) =>
+                      c.nombre.toLowerCase().includes(catSearch.toLowerCase())
+                    ).length === 0 && (
+                      <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
+                    )}
                   </div>
                 )}
-                <div className="relative">
-                  <Input
-                    ref={tagInputRef}
-                    className="h-8 text-xs"
-                    placeholder="Buscar etiqueta..."
-                    value={tagSearch}
-                    onChange={(e) => { setTagSearch(e.target.value); setTagDropdownOpen(true); }}
-                    onFocus={() => setTagDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setTagDropdownOpen(false), 150)}
-                  />
-                  {tagDropdownOpen && (
-                    <div className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md">
-                      {tags
-                        .filter((t) =>
+              </div>
+              {selectedCategory && !catSearch && (
+                <p className="text-xs text-primary truncate">{selectedCategory.nombre}</p>
+              )}
+            </div>
+
+            <div className="space-y-1 min-w-[10rem] flex-1 basis-[min(100%,13rem)]">
+              <Label className="text-xs text-muted-foreground">Etiquetas</Label>
+              {(filters.tag_ids ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1">
+                  {(filters.tag_ids ?? []).map((id) => {
+                    const tag = tags.find((t) => t.id === id);
+                    if (!tag) return null;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const newIds = (filters.tag_ids ?? []).filter((tid) => tid !== id);
+                          applyFilters({ ...filters, tag_ids: newIds.length ? newIds : undefined });
+                        }}
+                        className="text-xs px-2 py-0.5 rounded-full bg-primary text-primary-foreground flex items-center gap-1"
+                      >
+                        {tag.nombre}
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="relative">
+                <Input
+                  ref={tagInputRef}
+                  className="h-8 text-xs"
+                  placeholder="Buscar etiqueta..."
+                  value={tagSearch}
+                  onChange={(e) => {
+                    setTagSearch(e.target.value);
+                    setTagDropdownOpen(true);
+                  }}
+                  onFocus={() => setTagDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setTagDropdownOpen(false), 150)}
+                />
+                {tagDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md">
+                    {tags
+                      .filter(
+                        (t) =>
                           t.nombre.toLowerCase().includes(tagSearch.toLowerCase()) &&
                           !(filters.tag_ids ?? []).includes(t.id)
-                        )
-                        .map((tag) => (
-                          <button
-                            key={tag.id}
-                            type="button"
-                            className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              const newIds = [...(filters.tag_ids ?? []), tag.id];
-                              applyFilters({ ...filters, tag_ids: newIds });
-                              setTagSearch("");
-                              setTagDropdownOpen(false);
-                            }}
-                          >
-                            {tag.nombre}
-                          </button>
-                        ))}
-                      {tags.filter((t) =>
+                      )
+                      .map((tag) => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const newIds = [...(filters.tag_ids ?? []), tag.id];
+                            applyFilters({ ...filters, tag_ids: newIds });
+                            setTagSearch("");
+                            setTagDropdownOpen(false);
+                          }}
+                        >
+                          {tag.nombre}
+                        </button>
+                      ))}
+                    {tags.filter(
+                      (t) =>
                         t.nombre.toLowerCase().includes(tagSearch.toLowerCase()) &&
                         !(filters.tag_ids ?? []).includes(t.id)
-                      ).length === 0 && (
-                        <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
-                      )}
-                    </div>
-                  )}
-                </div>
+                    ).length === 0 && (
+                      <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-                onClick={() => { setCatSearch(""); clearFilters(); }}
+            <div className="space-y-1 min-w-[10rem] flex-1 basis-[min(100%,12rem)]">
+              <Label className="text-xs text-muted-foreground">Período</Label>
+              <Select
+                value={filters.periodo ?? "mes_actual"}
+                onValueChange={(v) =>
+                  applyFilters({ ...filters, periodo: v as TransactionPeriod })
+                }
               >
-                <X className="h-3.5 w-3.5 mr-1" />
-                Limpiar filtros
-              </Button>
+                <SelectTrigger className="h-8 text-xs w-full min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mes_actual">Mes actual</SelectItem>
+                  <SelectItem value="mes_anterior">Mes anterior</SelectItem>
+                  <SelectItem value="ultimos_3_meses">Últimos 3 meses</SelectItem>
+                  <SelectItem value="año_actual">Año actual</SelectItem>
+                  <SelectItem value="ultimo_año">Último año</SelectItem>
+                  <SelectItem value="personalizado">Período personalizado</SelectItem>
+                  <SelectItem value="desde_el_inicio">Desde el inicio</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        </Card>
-      )}
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-[9rem] shrink-0 pb-0.5">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="filtro-ingresos"
+                  checked={filters.showIngresos !== false}
+                  onCheckedChange={(v) =>
+                    applyFilters({ ...filters, showIngresos: v === true })
+                  }
+                  className="border-green-600/45 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600 data-[state=checked]:text-white dark:border-green-500/55"
+                />
+                <Label htmlFor="filtro-ingresos" className="text-xs font-normal cursor-pointer whitespace-nowrap">
+                  Ingresos
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="filtro-gastos"
+                  checked={filters.showGastos !== false}
+                  onCheckedChange={(v) =>
+                    applyFilters({ ...filters, showGastos: v === true })
+                  }
+                  className="border-red-600/45 data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600 data-[state=checked]:text-white dark:border-red-500/55"
+                />
+                <Label htmlFor="filtro-gastos" className="text-xs font-normal cursor-pointer whitespace-nowrap">
+                  Gastos
+                </Label>
+              </div>
+            </div>
+          </div>
+
+          {filters.periodo === "personalizado" && (
+            <div className="grid gap-3 grid-cols-2 sm:max-w-md">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Desde</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={filters.fechaDesde ?? ""}
+                  onChange={(e) => applyFilters({ ...filters, fechaDesde: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Hasta</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={filters.fechaHasta ?? ""}
+                  onChange={(e) => applyFilters({ ...filters, fechaHasta: e.target.value })}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={clearFilters}>
+              <X className="h-3.5 w-3.5 mr-1" />
+              Limpiar filtros
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Transaction list */}
       {loading ? (

@@ -104,14 +104,21 @@ export type DashboardPeriod =
   | "ultimo_año"
   | "personalizado";
 
+/** Períodos disponibles en Movimientos (incluye histórico completo). */
+export type TransactionPeriod = DashboardPeriod | "desde_el_inicio";
+
 export interface TransactionFilters {
   tipo?: TransactionType | "todos";
-  periodo?: DashboardPeriod;
+  periodo?: TransactionPeriod;
   fechaDesde?: string;
   fechaHasta?: string;
   account_id?: string;
   category_id?: string;
   tag_ids?: string[];
+  /** Checkbox ingresos (live filter). Si ambos con gastos están activos, no se filtra por tipo. */
+  showIngresos?: boolean;
+  /** Checkbox gastos (live filter). */
+  showGastos?: boolean;
 }
 
 export interface AccountWithBalance extends Account {
