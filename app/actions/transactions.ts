@@ -265,10 +265,11 @@ export async function getTotalBalance(accountId?: string): Promise<number> {
     return Math.round(Number(data ?? 0) * 100) / 100;
   }
 
-  // Global: sumar el saldo real de cada cuenta
+  // Global: solo cuentas activas (coherente con listados / filtros del dashboard)
   const { data: accounts, error: accErr } = await supabase
     .from("accounts")
-    .select("id");
+    .select("id")
+    .eq("estado", "activo");
   if (accErr) throw accErr;
   if (!accounts?.length) return 0;
 
@@ -301,6 +302,8 @@ export async function getBalanceBeforePeriod(filters?: TransactionFilters): Prom
   let accountsQuery = supabase.from("accounts").select("id, saldo_inicial");
   if (filters?.account_id) {
     accountsQuery = accountsQuery.eq("id", filters.account_id);
+  } else {
+    accountsQuery = accountsQuery.eq("estado", "activo");
   }
   const { data: accounts } = await accountsQuery;
   if (!accounts || accounts.length === 0) return 0;
@@ -315,6 +318,54 @@ export async function getBalanceBeforePeriod(filters?: TransactionFilters): Prom
     .from("transactions")
     .select("monto, tipo, account_id, to_account_id")
     .lt("fecha", periodStart);
+
+  if (filters?.account_id) {
+    txQuery = txQuery.or(
+      `account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`
+    );
+  }
+
+  const { data: txs } = await txQuery;
+  if (!txs) return totalSaldoInicial;
+
+  let delta = 0;
+  for (const t of txs) {
+    delta += balanceDeltaForTransaction(t, accountIds);
+  }
+
+  return totalSaldoInicial + delta;
+}
+
+/**
+ * Saldo real acumulado justo antes del calendario `fechaExclusive` (YYYY-MM-DD):
+ * saldo_inicial + todas las transacciones con fecha estrictamente menor.
+ * Usar la fecha mínima entre los movimientos ya cargados como línea base del running total,
+ * para que coincida con get_account_balance tras sumar esos movimientos (y no quedar corto
+ * cuando hay filtros de categoría/etiqueta o el primer movimiento no cae el día 1 del período).
+ */
+export async function getBalanceBeforeExclusiveDate(
+  filters: Pick<TransactionFilters, "account_id"> | undefined,
+  fechaExclusive: string
+): Promise<number> {
+  const supabase = await createClient();
+
+  let accountsQuery = supabase.from("accounts").select("id, saldo_inicial");
+  if (filters?.account_id) {
+    accountsQuery = accountsQuery.eq("id", filters.account_id);
+  } else {
+    accountsQuery = accountsQuery.eq("estado", "activo");
+  }
+
+  const { data: accounts } = await accountsQuery;
+  if (!accounts || accounts.length === 0) return 0;
+
+  const accountIds = new Set(accounts.map((a) => a.id));
+  const totalSaldoInicial = accounts.reduce((s, a) => s + Number(a.saldo_inicial), 0);
+
+  let txQuery = supabase
+    .from("transactions")
+    .select("monto, tipo, account_id, to_account_id")
+    .lt("fecha", fechaExclusive);
 
   if (filters?.account_id) {
     txQuery = txQuery.or(

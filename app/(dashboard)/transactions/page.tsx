@@ -1,4 +1,4 @@
-import { getTransactions, getBalanceBeforePeriod } from "@/app/actions/transactions";
+import { getTransactions, getTotalBalance } from "@/app/actions/transactions";
 import { getActiveAccounts } from "@/app/actions/accounts";
 import { getActiveCategories } from "@/app/actions/categories";
 import { getActiveTags } from "@/app/actions/tags";
@@ -28,12 +28,12 @@ export default async function TransactionsPage({ searchParams }: Props) {
       : {}),
   };
 
-  const [transactions, accounts, categories, tags, startingBalance] = await Promise.all([
+  const [transactions, accounts, categories, tags, referenceTotalBalance] = await Promise.all([
     getTransactions(initialFilters),
     getActiveAccounts(),
     getActiveCategories(),
     getActiveTags(),
-    getBalanceBeforePeriod(initialFilters),
+    getTotalBalance(initialFilters.account_id),
   ]);
 
   return (
@@ -42,7 +42,7 @@ export default async function TransactionsPage({ searchParams }: Props) {
       accounts={accounts}
       categories={categories}
       tags={tags}
-      initialStartingBalance={startingBalance}
+      referenceTotalBalance={referenceTotalBalance}
       initialFilters={initialFilters}
     />
   );

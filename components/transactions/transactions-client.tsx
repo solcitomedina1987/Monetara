@@ -24,11 +24,16 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { getTransactions, deleteTransaction, getBalanceBeforePeriod } from "@/app/actions/transactions";
+import { getTransactions, deleteTransaction, getTotalBalance } from "@/app/actions/transactions";
 import { ImportTransactionsDialog } from "./import-transactions-dialog";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
-import { applyTransactionToRunningBalance, sortTxsWithinDayForBalance, type RunningBalanceScope } from "@/lib/transaction-balance";
+import {
+  applyTransactionToRunningBalance,
+  sortTxsWithinDayForBalance,
+  sumBalanceDeltasForScope,
+  type RunningBalanceScope,
+} from "@/lib/transaction-balance";
 import { exportToPDF, exportToExcel, exportToCSV } from "@/lib/export";
 import type { Account, Category, Tag, TransactionWithRelations, TransactionFilters } from "@/lib/types";
 
@@ -45,7 +50,8 @@ interface Props {
   accounts: Account[];
   categories: Category[];
   tags: Tag[];
-  initialStartingBalance: number;
+  /** Saldo real RPC (widget): lista anclada para que el cierre coincida */
+  referenceTotalBalance: number;
   initialFilters?: TransactionFilters;
 }
 
@@ -55,7 +61,14 @@ type ExportStep = "format" | "destination" | "email";
 const TX_FILTER_KEY = "monetara_tx_filters";
 const DEFAULT_FILTERS: TransactionFilters = { periodo: "mes_actual" };
 
-export function TransactionsClient({ initialTransactions, accounts, categories, tags, initialStartingBalance, initialFilters }: Props) {
+export function TransactionsClient({
+  initialTransactions,
+  accounts,
+  categories,
+  tags,
+  referenceTotalBalance: initialReferenceTotalBalance,
+  initialFilters,
+}: Props) {
   const [transactions, setTransactions] = useState(initialTransactions);
   // Always start with a safe default (matches server render) to avoid hydration mismatch.
   // After mount, restore from localStorage unless URL-provided filters were passed.
@@ -67,7 +80,11 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(false);
-  const [startingBalance, setStartingBalance] = useState(initialStartingBalance);
+  const [referenceTotalBalance, setReferenceTotalBalance] = useState(initialReferenceTotalBalance);
+
+  useEffect(() => {
+    setReferenceTotalBalance(initialReferenceTotalBalance);
+  }, [initialReferenceTotalBalance]);
 
   // Tag filter
   const [tagSearch, setTagSearch] = useState("");
@@ -104,14 +121,14 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
   const applyFilters = useCallback(async (newFilters: TransactionFilters) => {
     setLoading(true);
     try {
-      const [data, newStartingBalance] = await Promise.all([
+      const [data, newRef] = await Promise.all([
         getTransactions(newFilters),
-        getBalanceBeforePeriod(newFilters),
+        getTotalBalance(newFilters.account_id),
       ]);
       setTransactions(data);
       setFilters(newFilters);
       try { localStorage.setItem(TX_FILTER_KEY, JSON.stringify(newFilters)); } catch {}
-      setStartingBalance(newStartingBalance);
+      setReferenceTotalBalance(newRef);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
     } finally {
@@ -149,6 +166,8 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
       try {
         await deleteTransaction(id);
         setTransactions((prev) => prev.filter((t) => t.id !== id));
+        const newTotal = await getTotalBalance(filters.account_id);
+        setReferenceTotalBalance(newTotal);
         setDeleteId(null);
         toast({ title: "Movimiento eliminado" });
       } catch (err: any) {
@@ -199,14 +218,15 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
     });
   };
 
-  // Group by day
-  const byDay = transactions.reduce((acc, t) => {
-    if (!acc[t.fecha]) acc[t.fecha] = [];
-    acc[t.fecha].push(t);
-    return acc;
-  }, {} as Record<string, TransactionWithRelations[]>);
-
-  const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+  const { byDay, sortedDays } = useMemo(() => {
+    const acc = transactions.reduce((map, t) => {
+      if (!map[t.fecha]) map[t.fecha] = [];
+      map[t.fecha].push(t);
+      return map;
+    }, {} as Record<string, TransactionWithRelations[]>);
+    const sorted = Object.keys(acc).sort((a, b) => b.localeCompare(a));
+    return { byDay: acc, sortedDays: sorted };
+  }, [transactions]);
 
   const selectedAccountId = filters.account_id;
   const runningScope = useMemo<RunningBalanceScope>(
@@ -220,17 +240,21 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
   const listDisplayCurrency =
     accounts.find((a) => a.id === filters.account_id)?.moneda ?? "ARS";
 
-  const daysAscending = [...sortedDays].reverse();
-  let running = startingBalance;
-  const dayEndBalance: Record<string, number> = {};
-  for (const day of daysAscending) {
-    const dayTxs = byDay[day];
-    const sorted = sortTxsWithinDayForBalance(dayTxs);
-    for (const t of sorted) {
-      running = applyTransactionToRunningBalance(running, t, runningScope);
+  const dayEndBalance = useMemo(() => {
+    const sumD = sumBalanceDeltasForScope(transactions, runningScope);
+    let running = Math.round((referenceTotalBalance - sumD) * 100) / 100;
+    const result: Record<string, number> = {};
+    const daysAscending = [...sortedDays].reverse();
+    for (const day of daysAscending) {
+      const dayTxs = byDay[day];
+      const sorted = sortTxsWithinDayForBalance(dayTxs);
+      for (const t of sorted) {
+        running = applyTransactionToRunningBalance(running, t, runningScope);
+      }
+      result[day] = running;
     }
-    dayEndBalance[day] = running;
-  }
+    return result;
+  }, [transactions, referenceTotalBalance, runningScope, sortedDays, byDay]);
 
   // Category filter label
   const selectedCategory = categories.find((c) => c.id === filters.category_id);

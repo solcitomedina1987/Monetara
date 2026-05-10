@@ -22,9 +22,14 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
-import { applyTransactionToRunningBalance, sortTxsWithinDayForBalance, type RunningBalanceScope } from "@/lib/transaction-balance";
+import {
+  applyTransactionToRunningBalance,
+  sortTxsWithinDayForBalance,
+  sumBalanceDeltasForScope,
+  type RunningBalanceScope,
+} from "@/lib/transaction-balance";
 import { usePersistedState } from "@/lib/hooks/use-persisted-state";
-import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance, getBalanceBeforePeriod } from "@/app/actions/transactions";
+import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance } from "@/app/actions/transactions";
 import type { Account, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
 
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
@@ -135,7 +140,6 @@ export function DashboardClient({
   const [expensesByTag, setExpensesByTag] = useState<TagEntry[]>([]);
   const [transactions, setTransactions] = useState(initialTransactions);
   const [totalBalance, setTotalBalance] = useState(initialTotalBalance);
-  const [startingBalance, setStartingBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [chartFullscreen, setChartFullscreen] = useState(false);
   const [chartMode, setChartMode] = useState<"categoria" | "etiqueta">("categoria");
@@ -168,20 +172,18 @@ export function DashboardClient({
     const filters = buildFilters(account, per, dates);
     const accountId = account === "todos" ? undefined : account;
     try {
-      const [newStats, newExpenses, newTagExpenses, newTx, newTotal, newStarting] = await Promise.all([
+      const [newStats, newExpenses, newTagExpenses, newTx, newTotal] = await Promise.all([
         getDashboardStats(filters),
         getExpensesByCategory(filters),
         getExpensesByTag(filters),
         getTransactions(filters),
         getTotalBalance(accountId),
-        getBalanceBeforePeriod(filters),
       ]);
       setStats(newStats);
       setExpenses(newExpenses);
       setExpensesByTag(newTagExpenses);
       setTransactions(newTx);
       setTotalBalance(newTotal);
-      setStartingBalance(newStarting);
     } finally {
       setLoading(false);
     }
@@ -243,13 +245,15 @@ export function DashboardClient({
     router.push(`/transactions?${params.toString()}`);
   };
 
-  // Group transactions by day
-  const byDay = transactions.reduce((acc, t) => {
-    if (!acc[t.fecha]) acc[t.fecha] = [];
-    acc[t.fecha].push(t);
-    return acc;
-  }, {} as Record<string, TransactionWithRelations[]>);
-  const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+  const { byDay, sortedDays } = useMemo(() => {
+    const acc = transactions.reduce((map, t) => {
+      if (!map[t.fecha]) map[t.fecha] = [];
+      map[t.fecha].push(t);
+      return map;
+    }, {} as Record<string, TransactionWithRelations[]>);
+    const sorted = Object.keys(acc).sort((a, b) => b.localeCompare(a));
+    return { byDay: acc, sortedDays: sorted };
+  }, [transactions]);
 
   const runningScope = useMemo<RunningBalanceScope>(
     () =>
@@ -259,10 +263,11 @@ export function DashboardClient({
     [selectedAccount, accounts]
   );
 
-  // Cumulative Saldo Total per day: startingBalance + all transactions up to that day (full history via startingBalance)
+  // Saldo por día anclado al RPC del widget: totalBalance − Σ(deltas listados) + deltas acumulados
   const dayEndBalance = useMemo(() => {
+    const sumD = sumBalanceDeltasForScope(transactions, runningScope);
+    let running = Math.round((totalBalance - sumD) * 100) / 100;
     const result: Record<string, number> = {};
-    let running = startingBalance;
     const ascending = [...sortedDays].reverse();
     for (const day of ascending) {
       const sorted = sortTxsWithinDayForBalance(byDay[day] ?? []);
@@ -272,7 +277,7 @@ export function DashboardClient({
       result[day] = running;
     }
     return result;
-  }, [sortedDays, byDay, startingBalance, runningScope]);
+  }, [transactions, sortedDays, byDay, totalBalance, runningScope]);
 
   const selectedAccountData = accounts.find((a) => a.id === selectedAccount);
   const currency = selectedAccountData?.moneda ?? "ARS";

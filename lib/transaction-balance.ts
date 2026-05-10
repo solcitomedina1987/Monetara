@@ -43,6 +43,12 @@ export function applyTransactionToRunningBalance(
   return running + balanceDeltaForTransaction(t, ids);
 }
 
+/** Suma de deltas de una lista (mismo criterio que get_account_balance). */
+export function sumBalanceDeltasForScope(transactions: TxBalanceInput[], scope: RunningBalanceScope): number {
+  const ids = scope.kind === "one" ? new Set([scope.accountId]) : scope.accountIds;
+  return transactions.reduce((s, t) => s + balanceDeltaForTransaction(t, ids), 0);
+}
+
 /** Sort transactions within a day for deterministic running total */
 export function sortTxsWithinDayForBalance<T extends TxBalanceInput>(txs: T[]): T[] {
   return [...txs].sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
