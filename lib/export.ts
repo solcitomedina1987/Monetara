@@ -257,9 +257,8 @@ async function fetchImageDataUrl(url: string): Promise<ImageData | null> {
   }
 }
 
-/** Logo del reporte: encaja en un cuadrado sin deformar (public/logo-monetara-solo.png). */
+/** Logo del reporte: cuadrado superior izquierdo, sin deformar (public/logo-monetara-solo.png). */
 async function loadPdfReportLogoLayout(
-  pageWidthMm: number,
   marginMm: number,
   boxSideMm: number
 ): Promise<{ dataUrl: string; fmt: "PNG" | "JPEG"; x: number; y: number; w: number; h: number } | null> {
@@ -284,8 +283,8 @@ async function loadPdfReportLogoLayout(
     const scale = boxSideMm / Math.max(dims.w, dims.h);
     const drawW = dims.w * scale;
     const drawH = dims.h * scale;
-    const squareLeft = pageWidthMm - marginMm - boxSideMm;
-    const squareTop = marginMm - 1;
+    const squareLeft = marginMm;
+    const squareTop = marginMm;
     const x = squareLeft + (boxSideMm - drawW) / 2;
     const y = squareTop + (boxSideMm - drawH) / 2;
 
@@ -336,14 +335,19 @@ export async function exportToPDF(
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 14;
-  const contentWidth = pageWidth - margin * 2;
+
+  /** Zona del logo (cuadrado arriba-izquierda) + separación: todo el contenido empieza a la derecha para no pisarse. */
+  const LOGO_BOX_MM = 14;
+  const LOGO_GAP_MM = 4;
+  const tableLeftMargin = margin + LOGO_BOX_MM + LOGO_GAP_MM;
+  const textStartX = tableLeftMargin;
+  const tableContentWidth = pageWidth - tableLeftMargin - margin;
 
   const grayHead: [number, number, number] = [55, 55, 55];
   const grayLine: [number, number, number] = [190, 190, 190];
   const grayAlt: [number, number, number] = [246, 246, 246];
 
-  const LOGO_BOX_MM = 14;
-  const reportLogoLayout = await loadPdfReportLogoLayout(pageWidth, margin, LOGO_BOX_MM);
+  const reportLogoLayout = await loadPdfReportLogoLayout(margin, LOGO_BOX_MM);
   const logoPagesStamped = new Set<number>();
 
   const stampReportLogoForPage = (pdf: typeof doc, pageNum: number) => {
@@ -365,14 +369,14 @@ export async function exportToPDF(
   };
 
   if (transactions.length === 0) {
+    stampReportLogoForPage(doc, 1);
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 30, 30);
-    doc.text("Movimientos", margin, margin + 6);
+    doc.text("Movimientos", textStartX, margin + 6);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text("No hay movimientos para exportar con los filtros actuales.", margin, margin + 16);
-    stampReportLogoForPage(doc, 1);
+    doc.text("No hay movimientos para exportar con los filtros actuales.", textStartX, margin + 16);
     doc.save(filename ?? `movimientos_${format(new Date(), "yyyy-MM-dd")}.pdf`);
     return;
   }
@@ -392,23 +396,23 @@ export async function exportToPDF(
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(28, 28, 28);
-    doc.text("Movimientos", margin, cursorY + 5);
+    doc.text("Movimientos", textStartX, cursorY + 5);
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(45, 45, 45);
     cursorY += 11;
-    doc.text(formatPeriodReportTitle(filters), margin, cursorY);
+    doc.text(formatPeriodReportTitle(filters), textStartX, cursorY);
 
     cursorY += 6;
     const accountsLine = describeIncludedAccounts(filters, transactions);
-    const wrapped = doc.splitTextToSize(`Cuentas incluidas: ${accountsLine}`, contentWidth);
-    doc.text(wrapped, margin, cursorY);
+    const wrapped = doc.splitTextToSize(`Cuentas incluidas: ${accountsLine}`, tableContentWidth);
+    doc.text(wrapped, textStartX, cursorY);
     cursorY += wrapped.length * 5 + 4;
 
     doc.setFontSize(8);
     doc.setTextColor(90, 90, 90);
-    doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, margin, cursorY);
+    doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, textStartX, cursorY);
     cursorY += 5;
 
     doc.setDrawColor(...grayLine);
@@ -435,7 +439,7 @@ export async function exportToPDF(
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 30, 30);
-    doc.text(accountName, margin, cursorY + 4);
+    doc.text(accountName, textStartX, cursorY + 4);
     cursorY += 9;
 
     const body: CellInput[][] = [];
@@ -507,9 +511,9 @@ export async function exportToPDF(
 
     autoTable(doc, {
       startY: cursorY,
-      margin: { left: margin, right: margin, bottom: margin },
+      margin: { top: margin, left: tableLeftMargin, right: margin, bottom: margin },
       showHead: "everyPage",
-      tableWidth: contentWidth,
+      tableWidth: tableContentWidth,
       head: [["Fecha", "Icono cuenta", "Categoría", "Etiquetas | Notas", "Monto"]],
       body,
       theme: "grid",
@@ -568,7 +572,8 @@ export async function exportToPDF(
           data.cell.styles.fontStyle = "bold";
         }
       },
-      didDrawPage: (hookData) => {
+      /** Logo antes del contenido de la tabla en cada hoja (evita que lo tape el pintado de celdas). */
+      willDrawPage: (hookData) => {
         stampReportLogoForPage(doc, hookData.pageNumber);
       },
       didDrawCell: (data) => {
