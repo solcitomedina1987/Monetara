@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Transaction, TransactionWithRelations, TransactionFilters } from "@/lib/types";
+import { balanceDeltaForTransaction } from "@/lib/transaction-balance";
 import { startOfMonth, endOfMonth, subMonths, startOfYear, format } from "date-fns";
 
 /** Returns [fechaDesde, fechaHasta] for the given filter period. */
@@ -326,14 +327,7 @@ export async function getBalanceBeforePeriod(filters?: TransactionFilters): Prom
 
   let delta = 0;
   for (const t of txs) {
-    if (t.tipo === "ingreso" && accountIds.has(t.account_id)) {
-      delta += Number(t.monto);
-    } else if (t.tipo === "gasto" && accountIds.has(t.account_id)) {
-      delta -= Number(t.monto);
-    } else if (t.tipo === "transferencia") {
-      if (accountIds.has(t.account_id)) delta -= Number(t.monto);
-      if (accountIds.has(t.to_account_id)) delta += Number(t.monto);
-    }
+    delta += balanceDeltaForTransaction(t, accountIds);
   }
 
   return totalSaldoInicial + delta;

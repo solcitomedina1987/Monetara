@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
+import { applyTransactionToRunningBalance, sortTxsWithinDayForBalance, type RunningBalanceScope } from "@/lib/transaction-balance";
 import { usePersistedState } from "@/lib/hooks/use-persisted-state";
 import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance, getBalanceBeforePeriod } from "@/app/actions/transactions";
 import type { Account, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
@@ -250,22 +251,28 @@ export function DashboardClient({
   }, {} as Record<string, TransactionWithRelations[]>);
   const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
 
-  // Cumulative Saldo Total per day: startingBalance + all transactions up to that day
+  const runningScope = useMemo<RunningBalanceScope>(
+    () =>
+      selectedAccount === "todos"
+        ? { kind: "many", accountIds: new Set(accounts.map((a) => a.id)) }
+        : { kind: "one", accountId: selectedAccount },
+    [selectedAccount, accounts]
+  );
+
+  // Cumulative Saldo Total per day: startingBalance + all transactions up to that day (full history via startingBalance)
   const dayEndBalance = useMemo(() => {
     const result: Record<string, number> = {};
     let running = startingBalance;
-    // Iterate ascending (oldest first) so the running total accumulates correctly
     const ascending = [...sortedDays].reverse();
     for (const day of ascending) {
-      for (const t of byDay[day] ?? []) {
-        if (t.tipo === "ingreso") running += Number(t.monto);
-        else if (t.tipo === "gasto") running -= Number(t.monto);
-        // double-entry transfers (gasto+ingreso pairs) self-cancel when both accounts visible
+      const sorted = sortTxsWithinDayForBalance(byDay[day] ?? []);
+      for (const t of sorted) {
+        running = applyTransactionToRunningBalance(running, t, runningScope);
       }
       result[day] = running;
     }
     return result;
-  }, [sortedDays, byDay, startingBalance]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sortedDays, byDay, startingBalance, runningScope]);
 
   const selectedAccountData = accounts.find((a) => a.id === selectedAccount);
   const currency = selectedAccountData?.moneda ?? "ARS";

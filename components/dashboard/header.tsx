@@ -11,7 +11,9 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/types";
+import { updateProfile } from "@/app/actions/profile";
+import { toast } from "@/hooks/use-toast";
+import type { Profile, ThemePreference } from "@/lib/types";
 
 interface HeaderProps {
   profile: Profile | null;
@@ -67,6 +69,23 @@ export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
     : Sun;
   const CurrentIcon = currentThemeIcon;
 
+  const persistThemeFromHeader = async (id: string) => {
+    if (id !== "light" && id !== "dark" && id !== "monetara") return;
+    setTheme(id);
+    try {
+      const updated = await updateProfile({ default_theme: id as ThemePreference });
+      setProfile(updated);
+      router.refresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Intentá de nuevo";
+      toast({
+        variant: "destructive",
+        title: "No se pudo guardar el tema",
+        description: message,
+      });
+    }
+  };
+
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur px-4 md:px-6">
       <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick}>
@@ -91,7 +110,7 @@ export function Header({ profile: initialProfile, onMenuClick }: HeaderProps) {
             {THEMES.map(({ id, label, icon: Icon }) => (
               <DropdownMenuItem
                 key={id}
-                onClick={() => setTheme(id)}
+                onClick={() => void persistThemeFromHeader(id)}
                 className="flex items-center justify-between cursor-pointer"
               >
                 <div className="flex items-center gap-2">

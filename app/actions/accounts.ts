@@ -116,6 +116,7 @@ export async function setDefaultAccount(id: string): Promise<void> {
 
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
+  revalidatePath("/perfil");
 }
 
 export async function clearDefaultAccount(): Promise<void> {
@@ -131,4 +132,5 @@ export async function clearDefaultAccount(): Promise<void> {
 
   revalidatePath("/accounts");
   revalidatePath("/dashboard");
+  revalidatePath("/perfil");
 }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -35,6 +36,7 @@ interface AccountsClientProps {
 }
 
 export function AccountsClient({ initialAccounts }: AccountsClientProps) {
+  const router = useRouter();
   const [accounts, setAccounts] = useState<AccountWithBalance[]>(initialAccounts);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"todos" | "activo" | "inactivo">("todos");
@@ -154,6 +156,7 @@ export function AccountsClient({ initialAccounts }: AccountsClientProps) {
         }
         const refreshed = await getAccountsWithBalance();
         setAccounts(refreshed);
+        router.refresh();
       } catch (err: any) {
         toast({ variant: "destructive", title: "Error", description: err.message });
       }

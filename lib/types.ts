@@ -2,12 +2,16 @@ export type TransactionType = "ingreso" | "gasto" | "transferencia";
 export type AccountStatus = "activo" | "inactivo";
 export type CategoryStatus = "activo" | "inactivo";
 
+export type ThemePreference = "light" | "dark" | "monetara";
+
 export interface Profile {
   id: string;
   nombre: string;
   apellido: string;
   email: string;
   avatar_url?: string | null;
+  /** Tema guardado en BD; se aplica al cargar el dashboard en un dispositivo nuevo. */
+  default_theme?: ThemePreference | null;
   created_at: string;
   updated_at: string;
 }

@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS default_theme TEXT;
+
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "profiles_select_own" ON profiles
@@ -210,14 +213,20 @@ RETURNS NUMERIC LANGUAGE sql STABLE AS $$
   SELECT
     a.saldo_inicial
     + COALESCE(SUM(CASE
-        WHEN t.tipo = 'ingreso' THEN t.monto
-        WHEN t.tipo = 'gasto' THEN -t.monto
+        /* Ingreso/gasto: solo el asiento contable de esta cuenta (account_id).
+           No incluir filas donde solo coincida to_account_id (contra-asiento de transferencias dobles). */
+        WHEN t.tipo = 'ingreso' AND t.account_id = p_account_id THEN t.monto
+        WHEN t.tipo = 'gasto' AND t.account_id = p_account_id THEN -t.monto
+        /* Transferencias legacy (una fila tipo transferencia) */
         WHEN t.tipo = 'transferencia' AND t.account_id = p_account_id THEN -t.monto
         WHEN t.tipo = 'transferencia' AND t.to_account_id = p_account_id THEN t.monto
         ELSE 0
       END), 0) AS balance
   FROM accounts a
-  LEFT JOIN transactions t ON (t.account_id = p_account_id OR t.to_account_id = p_account_id)
+  LEFT JOIN transactions t ON (
+    (t.tipo IN ('ingreso', 'gasto') AND t.account_id = p_account_id)
+    OR (t.tipo = 'transferencia' AND (t.account_id = p_account_id OR t.to_account_id = p_account_id))
+  )
   WHERE a.id = p_account_id
   GROUP BY a.saldo_inicial;
 $$;

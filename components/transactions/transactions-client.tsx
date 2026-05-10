@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition, useRef, useEffect } from "react";
+import { useState, useCallback, useTransition, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { format, subMonths, startOfMonth } from "date-fns";
@@ -28,6 +28,7 @@ import { getTransactions, deleteTransaction, getBalanceBeforePeriod } from "@/ap
 import { ImportTransactionsDialog } from "./import-transactions-dialog";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
+import { applyTransactionToRunningBalance, sortTxsWithinDayForBalance, type RunningBalanceScope } from "@/lib/transaction-balance";
 import { exportToPDF, exportToExcel, exportToCSV } from "@/lib/export";
 import type { Account, Category, Tag, TransactionWithRelations, TransactionFilters } from "@/lib/types";
 
@@ -207,25 +208,26 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
 
   const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
 
-  const totalIngresos = transactions.filter((t) => t.tipo === "ingreso").reduce((s, t) => s + Number(t.monto), 0);
-  const totalGastos = transactions.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0);
-
   const selectedAccountId = filters.account_id;
+  const runningScope = useMemo<RunningBalanceScope>(
+    () =>
+      selectedAccountId
+        ? { kind: "one", accountId: selectedAccountId }
+        : { kind: "many", accountIds: new Set(accounts.map((a) => a.id)) },
+    [selectedAccountId, accounts]
+  );
+
+  const listDisplayCurrency =
+    accounts.find((a) => a.id === filters.account_id)?.moneda ?? "ARS";
+
   const daysAscending = [...sortedDays].reverse();
   let running = startingBalance;
   const dayEndBalance: Record<string, number> = {};
   for (const day of daysAscending) {
     const dayTxs = byDay[day];
-    const sorted = [...dayTxs].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const sorted = sortTxsWithinDayForBalance(dayTxs);
     for (const t of sorted) {
-      if (t.tipo === "ingreso") running += Number(t.monto);
-      else if (t.tipo === "gasto") running -= Number(t.monto);
-      else if (t.tipo === "transferencia") {
-        if (selectedAccountId) {
-          if (t.account_id === selectedAccountId) running -= Number(t.monto);
-          else running += Number(t.monto);
-        }
-      }
+      running = applyTransactionToRunningBalance(running, t, runningScope);
     }
     dayEndBalance[day] = running;
   }
@@ -543,8 +545,6 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
         <div className="space-y-6">
           {sortedDays.map((day) => {
             const dayTxs = byDay[day];
-            const dayIngresos = dayTxs.filter((t) => t.tipo === "ingreso").reduce((s, t) => s + Number(t.monto), 0);
-            const dayGastos = dayTxs.filter((t) => t.tipo === "gasto").reduce((s, t) => s + Number(t.monto), 0);
             const saldoAlCierre = dayEndBalance[day];
 
             return (
@@ -556,7 +556,7 @@ export function TransactionsClient({ initialTransactions, accounts, categories, 
                       .replace(/^\w/, (c) => c.toUpperCase())}
                   </h3>
                   <span className={`text-xs font-bold ${saldoAlCierre >= 0 ? "text-foreground" : "text-red-600 dark:text-red-400"}`}>
-                    Saldo: {formatCurrency(saldoAlCierre, "ARS")}
+                    Saldo Total: {formatCurrency(saldoAlCierre, listDisplayCurrency)}
                   </span>
                 </div>
 
