@@ -23,7 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
 import { usePersistedState } from "@/lib/hooks/use-persisted-state";
-import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance } from "@/app/actions/transactions";
+import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance, getBalanceBeforePeriod } from "@/app/actions/transactions";
 import type { Account, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
 
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
@@ -134,6 +134,7 @@ export function DashboardClient({
   const [expensesByTag, setExpensesByTag] = useState<TagEntry[]>([]);
   const [transactions, setTransactions] = useState(initialTransactions);
   const [totalBalance, setTotalBalance] = useState(initialTotalBalance);
+  const [startingBalance, setStartingBalance] = useState(0);
   const [loading, setLoading] = useState(false);
   const [chartFullscreen, setChartFullscreen] = useState(false);
   const [chartMode, setChartMode] = useState<"categoria" | "etiqueta">("categoria");
@@ -166,18 +167,20 @@ export function DashboardClient({
     const filters = buildFilters(account, per, dates);
     const accountId = account === "todos" ? undefined : account;
     try {
-      const [newStats, newExpenses, newTagExpenses, newTx, newTotal] = await Promise.all([
+      const [newStats, newExpenses, newTagExpenses, newTx, newTotal, newStarting] = await Promise.all([
         getDashboardStats(filters),
         getExpensesByCategory(filters),
         getExpensesByTag(filters),
         getTransactions(filters),
         getTotalBalance(accountId),
+        getBalanceBeforePeriod(filters),
       ]);
       setStats(newStats);
       setExpenses(newExpenses);
       setExpensesByTag(newTagExpenses);
       setTransactions(newTx);
       setTotalBalance(newTotal);
+      setStartingBalance(newStarting);
     } finally {
       setLoading(false);
     }
@@ -247,6 +250,23 @@ export function DashboardClient({
   }, {} as Record<string, TransactionWithRelations[]>);
   const sortedDays = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
 
+  // Cumulative Saldo Total per day: startingBalance + all transactions up to that day
+  const dayEndBalance = useMemo(() => {
+    const result: Record<string, number> = {};
+    let running = startingBalance;
+    // Iterate ascending (oldest first) so the running total accumulates correctly
+    const ascending = [...sortedDays].reverse();
+    for (const day of ascending) {
+      for (const t of byDay[day] ?? []) {
+        if (t.tipo === "ingreso") running += Number(t.monto);
+        else if (t.tipo === "gasto") running -= Number(t.monto);
+        // double-entry transfers (gasto+ingreso pairs) self-cancel when both accounts visible
+      }
+      result[day] = running;
+    }
+    return result;
+  }, [sortedDays, byDay, startingBalance]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectedAccountData = accounts.find((a) => a.id === selectedAccount);
   const currency = selectedAccountData?.moneda ?? "ARS";
 
@@ -302,14 +322,13 @@ export function DashboardClient({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground text-sm">{PERIOD_LABELS[periodo]}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold shrink-0">Dashboard</h1>
+
+        {/* Filters — always one row, never wraps, scrolls horizontally if needed */}
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5">
           <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-36 shrink-0 text-xs h-9">
               <SelectValue placeholder="Todas las cuentas" />
             </SelectTrigger>
             <SelectContent>
@@ -321,7 +340,7 @@ export function DashboardClient({
           </Select>
 
           <Select value={periodo} onValueChange={(v) => setPeriodo(v as DashboardPeriod)}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-40 shrink-0 text-xs h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -334,7 +353,7 @@ export function DashboardClient({
             </SelectContent>
           </Select>
 
-          <Button variant="outline" size="icon" onClick={() => refresh()} disabled={loading}>
+          <Button variant="outline" size="icon" className="shrink-0 h-9 w-9" onClick={() => refresh()} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
@@ -399,18 +418,18 @@ export function DashboardClient({
         </Link>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Stats cards — 2×2 on mobile, 4-column on desktop */}
+      <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <TrendingUp className="h-4 w-4 text-green-500" />
-              Ingresos del período
+          <CardHeader className="px-3 pt-3 pb-1">
+            <CardDescription className="flex items-center gap-1 text-xs">
+              <TrendingUp className="h-3 w-3 text-green-500 shrink-0" />
+              <span className="truncate">Ingresos</span>
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {loading ? <Skeleton className="h-8 w-32" /> : (
-              <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+          <CardContent className="px-3 pb-3">
+            {loading ? <Skeleton className="h-6 w-20" /> : (
+              <p className="text-base sm:text-xl font-bold text-green-600 dark:text-green-400 leading-tight tabular-nums">
                 {formatCurrency(stats.ingresos, currency)}
               </p>
             )}
@@ -418,15 +437,15 @@ export function DashboardClient({
         </Card>
 
         <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <TrendingDown className="h-4 w-4 text-red-500" />
-              Gastos del período
+          <CardHeader className="px-3 pt-3 pb-1">
+            <CardDescription className="flex items-center gap-1 text-xs">
+              <TrendingDown className="h-3 w-3 text-red-500 shrink-0" />
+              <span className="truncate">Gastos</span>
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {loading ? <Skeleton className="h-8 w-32" /> : (
-              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+          <CardContent className="px-3 pb-3">
+            {loading ? <Skeleton className="h-6 w-20" /> : (
+              <p className="text-base sm:text-xl font-bold text-red-600 dark:text-red-400 leading-tight tabular-nums">
                 {formatCurrency(stats.gastos, currency)}
               </p>
             )}
@@ -434,15 +453,15 @@ export function DashboardClient({
         </Card>
 
         <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <Wallet className="h-4 w-4 text-primary" />
-              Balance del período
+          <CardHeader className="px-3 pt-3 pb-1">
+            <CardDescription className="flex items-center gap-1 text-xs">
+              <Wallet className="h-3 w-3 text-primary shrink-0" />
+              <span className="truncate">Balance</span>
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {loading ? <Skeleton className="h-8 w-32" /> : (
-              <p className={`text-2xl font-bold ${stats.balance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+          <CardContent className="px-3 pb-3">
+            {loading ? <Skeleton className="h-6 w-20" /> : (
+              <p className={`text-base sm:text-xl font-bold leading-tight tabular-nums ${stats.balance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                 {formatCurrency(stats.balance, currency)}
               </p>
             )}
@@ -450,22 +469,20 @@ export function DashboardClient({
         </Card>
 
         <Card className="border-primary/30 bg-primary/5">
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1 text-primary">
-              <Scale className="h-4 w-4" />
-              Saldo total real
+          <CardHeader className="px-3 pt-3 pb-1">
+            <CardDescription className="flex items-center gap-1 text-xs text-primary">
+              <Scale className="h-3 w-3 shrink-0" />
+              <span className="truncate">Saldo Real</span>
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {loading ? <Skeleton className="h-8 w-32" /> : (
-              <p className={`text-2xl font-bold ${totalBalance >= 0 ? "text-primary" : "text-red-600 dark:text-red-400"}`}>
+          <CardContent className="px-3 pb-3">
+            {loading ? <Skeleton className="h-6 w-20" /> : (
+              <p className={`text-base sm:text-xl font-bold leading-tight tabular-nums ${totalBalance >= 0 ? "text-primary" : "text-red-600 dark:text-red-400"}`}>
                 {formatCurrency(totalBalance, currency)}
               </p>
             )}
-            <p className="text-xs text-muted-foreground mt-1">
-              {selectedAccount === "todos"
-                ? "Ingresos − gastos · todas las cuentas"
-                : `Saldo actual · ${selectedAccountData?.nombre ?? "cuenta"}`}
+            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight truncate">
+              {selectedAccount === "todos" ? "Todas las cuentas" : selectedAccountData?.nombre ?? "cuenta"}
             </p>
           </CardContent>
         </Card>
@@ -544,20 +561,18 @@ export function DashboardClient({
             ) : (
               sortedDays.slice(0, 5).map((day) => {
                 const dayTxs = byDay[day];
-                const dayNet = dayTxs.reduce((s, t) =>
-                  t.tipo === "ingreso" ? s + Number(t.monto) :
-                  t.tipo === "gasto"   ? s - Number(t.monto) : s, 0);
+                const cumBalance = dayEndBalance[day] ?? 0;
 
                 return (
                   <div key={day}>
-                    {/* Day header */}
+                    {/* Day header — shows cumulative Saldo Total up to this day */}
                     <div className="flex items-center justify-between px-4 py-1.5 bg-muted/30">
                       <p className="text-xs font-semibold text-muted-foreground">
                         {format(new Date(day + "T12:00:00"), "EEEE d 'de' MMMM", { locale: es })
                           .replace(/^\w/, (c) => c.toUpperCase())}
                       </p>
-                      <span className={`text-xs font-medium ${dayNet >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                        Saldo: {dayNet >= 0 ? "+" : ""}{formatCurrency(dayNet, currency)}
+                      <span className={`text-xs font-medium ${cumBalance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        Saldo Total: {formatCurrency(cumBalance, currency)}
                       </span>
                     </div>
 
