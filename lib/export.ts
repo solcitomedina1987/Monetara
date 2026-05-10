@@ -185,6 +185,23 @@ function abbreviateAccountName(nombre: string): string {
   return t.slice(0, 3).toUpperCase();
 }
 
+/** Monto solo con dígitos, punto decimal y signo ASCII (evita glifos raros en Helvetica/pdf). */
+function formatMoneyPdfPlain(m: number): string {
+  return Math.abs(Number(m)).toFixed(2);
+}
+
+function etiquetasYNotasCellForPdf(t: TransactionWithRelations): string {
+  const tagsStr = (t.tags ?? [])
+    .map((tag) => tag.nombre?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const notesStr = (t.notas ?? "").trim();
+  if (!tagsStr && !notesStr) return "—";
+  if (!tagsStr) return notesStr;
+  if (!notesStr) return tagsStr;
+  return `${tagsStr} | ${notesStr}`;
+}
+
 function categoryCellForPdf(t: TransactionWithRelations): string {
   if (t.tipo === "transferencia" && t.to_account?.nombre) {
     return `Transferencia → ${t.to_account.nombre}`;
@@ -199,11 +216,11 @@ function categoryCellForPdf(t: TransactionWithRelations): string {
 function formatMontoCell(t: TransactionWithRelations, symbol: string): string {
   const m = Number(t.monto);
   if (Number.isNaN(m)) return `${symbol} —`;
-  const abs = Math.abs(m).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (t.tipo === "ingreso") return `${symbol} +${abs}`;
-  if (t.tipo === "gasto") return `${symbol} −${abs}`;
-  if (t.tipo === "transferencia") return `${symbol} ${abs}`;
-  return `${symbol} ${abs}`;
+  const absStr = formatMoneyPdfPlain(m);
+  if (t.tipo === "ingreso") return `${symbol} ${absStr}`;
+  if (t.tipo === "gasto") return `${symbol} -${absStr}`;
+  if (t.tipo === "transferencia") return `${symbol} ${absStr}`;
+  return `${symbol} ${absStr}`;
 }
 
 function subtotalIngresosForAccount(txs: TransactionWithRelations[]): number {
@@ -377,7 +394,7 @@ export async function exportToPDF(
           fechaStr,
           "",
           categoryCellForPdf(t),
-          t.notas?.trim() ? `Nota: ${t.notas.trim()}` : "Nota: —",
+          etiquetasYNotasCellForPdf(t),
           formatMontoCell(t, sym),
         ]);
         iconSlotForRow.push(img);
@@ -386,7 +403,7 @@ export async function exportToPDF(
           fechaStr,
           abbr,
           categoryCellForPdf(t),
-          t.notas?.trim() ? `Nota: ${t.notas.trim()}` : "Nota: —",
+          etiquetasYNotasCellForPdf(t),
           formatMontoCell(t, sym),
         ]);
         iconSlotForRow.push("abbr");
@@ -397,27 +414,30 @@ export async function exportToPDF(
     const gas = subtotalGastosForAccount(sortedTxs);
     const total = Number((ing - gas).toFixed(2));
 
-    const money = (n: number) =>
-      `${sym} ${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const moneyPlain = (n: number) => `${sym} ${formatMoneyPdfPlain(n)}`;
+    const moneyTotal = (n: number) => {
+      const sign = n < 0 ? "-" : "";
+      return `${sym} ${sign}${formatMoneyPdfPlain(n)}`;
+    };
 
     body.push([
       { content: "", colSpan: 3 },
       { content: "Subtotal Ingresos", styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
-      { content: money(ing), styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
+      { content: moneyPlain(ing), styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
     ]);
     iconSlotForRow.push(null);
 
     body.push([
       { content: "", colSpan: 3 },
       { content: "Subtotal Gastos", styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
-      { content: money(gas), styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
+      { content: moneyPlain(gas), styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
     ]);
     iconSlotForRow.push(null);
 
     body.push([
       { content: "", colSpan: 3 },
       { content: "Total", styles: { halign: "right", fontStyle: "bold", textColor: [20, 20, 20] } },
-      { content: money(total), styles: { halign: "right", fontStyle: "bold", textColor: [20, 20, 20] } },
+      { content: moneyTotal(total), styles: { halign: "right", fontStyle: "bold", textColor: [20, 20, 20] } },
     ]);
     iconSlotForRow.push(null);
 
@@ -426,7 +446,7 @@ export async function exportToPDF(
       margin: { left: margin, right: margin, bottom: margin },
       showHead: "everyPage",
       tableWidth: contentWidth,
-      head: [["Fecha", "Icono cuenta", "Categoría", "Notas", "Monto"]],
+      head: [["Fecha", "Icono cuenta", "Categoría", "Etiquetas | Notas", "Monto"]],
       body,
       theme: "grid",
       styles: {
@@ -445,11 +465,17 @@ export async function exportToPDF(
         halign: "center",
       },
       columnStyles: {
-        0: { cellWidth: 22, halign: "center" },
-        1: { cellWidth: 18, halign: "center" },
-        2: { cellWidth: 44 },
-        3: { cellWidth: "auto" },
-        4: { cellWidth: 32, halign: "right", fontStyle: "normal" },
+        0: { cellWidth: 22, halign: "center", overflow: "linebreak" },
+        1: { cellWidth: 16, halign: "center", overflow: "hidden" },
+        2: { cellWidth: 42, overflow: "linebreak" },
+        3: { cellWidth: "auto", overflow: "linebreak" },
+        4: {
+          cellWidth: 38,
+          halign: "right",
+          fontStyle: "normal",
+          overflow: "visible",
+          valign: "middle",
+        },
       },
       alternateRowStyles: {
         fillColor: grayAlt,
