@@ -257,18 +257,42 @@ async function fetchImageDataUrl(url: string): Promise<ImageData | null> {
   }
 }
 
-/** Logo del reporte (public/logo-monetara-logo.png). */
-async function loadPdfReportLogoDataUrl(): Promise<string | null> {
+/** Logo del reporte: encaja en un cuadrado sin deformar (public/logo-monetara-solo.png). */
+async function loadPdfReportLogoLayout(
+  pageWidthMm: number,
+  marginMm: number,
+  boxSideMm: number
+): Promise<{ dataUrl: string; fmt: "PNG" | "JPEG"; x: number; y: number; w: number; h: number } | null> {
   try {
-    const res = await fetch("/logo-monetara-logo.png");
+    const res = await fetch("/logo-monetara-solo.png");
     if (!res.ok) return null;
     const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+
+    const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve({ w: el.naturalWidth, h: el.naturalHeight });
+      el.onerror = () => reject(new Error("image"));
+      el.src = dataUrl;
+    });
+
+    const scale = boxSideMm / Math.max(dims.w, dims.h);
+    const drawW = dims.w * scale;
+    const drawH = dims.h * scale;
+    const squareLeft = pageWidthMm - marginMm - boxSideMm;
+    const squareTop = marginMm - 1;
+    const x = squareLeft + (boxSideMm - drawW) / 2;
+    const y = squareTop + (boxSideMm - drawH) / 2;
+
+    const fmt: "PNG" | "JPEG" =
+      dataUrl.includes("image/jpeg") || dataUrl.includes("image/jpg") ? "JPEG" : "PNG";
+
+    return { dataUrl, fmt, x, y, w: drawW, h: drawH };
   } catch {
     return null;
   }
@@ -318,25 +342,22 @@ export async function exportToPDF(
   const grayLine: [number, number, number] = [190, 190, 190];
   const grayAlt: [number, number, number] = [246, 246, 246];
 
-  const reportLogoDataUrl = await loadPdfReportLogoDataUrl();
-  const LOGO_W_MM = 38;
-  const LOGO_H_MM = 11;
+  const LOGO_BOX_MM = 14;
+  const reportLogoLayout = await loadPdfReportLogoLayout(pageWidth, margin, LOGO_BOX_MM);
   const logoPagesStamped = new Set<number>();
 
   const stampReportLogoForPage = (pdf: typeof doc, pageNum: number) => {
-    if (!reportLogoDataUrl || logoPagesStamped.has(pageNum)) return;
+    if (!reportLogoLayout || logoPagesStamped.has(pageNum)) return;
     logoPagesStamped.add(pageNum);
-    const fmt: "PNG" | "JPEG" =
-      reportLogoDataUrl.includes("image/jpeg") || reportLogoDataUrl.includes("image/jpg") ? "JPEG" : "PNG";
 
     try {
       pdf.addImage(
-        reportLogoDataUrl,
-        fmt,
-        pageWidth - margin - LOGO_W_MM,
-        margin - 1,
-        LOGO_W_MM,
-        LOGO_H_MM
+        reportLogoLayout.dataUrl,
+        reportLogoLayout.fmt,
+        reportLogoLayout.x,
+        reportLogoLayout.y,
+        reportLogoLayout.w,
+        reportLogoLayout.h
       );
     } catch {
       /* formato no soportado por addImage */
@@ -465,15 +486,15 @@ export async function exportToPDF(
 
     body.push([
       { content: "", colSpan: 3 },
-      { content: "Subtotal Ingresos", styles: { halign: "right", fontStyle: "normal" } },
-      { content: moneyPlain(ing), styles: { halign: "right", fontStyle: "normal" } },
+      { content: "Subtotal Ingresos", styles: { halign: "right", fontStyle: "bold" } },
+      { content: moneyPlain(ing), styles: { halign: "right", fontStyle: "bold" } },
     ]);
     iconSlotForRow.push(null);
 
     body.push([
       { content: "", colSpan: 3 },
-      { content: "Subtotal Gastos", styles: { halign: "right", fontStyle: "normal" } },
-      { content: `${sym} -${formatMoneyPdfPlain(gas)}`, styles: { halign: "right", fontStyle: "normal" } },
+      { content: "Subtotal Gastos", styles: { halign: "right", fontStyle: "bold" } },
+      { content: `${sym} -${formatMoneyPdfPlain(gas)}`, styles: { halign: "right", fontStyle: "bold" } },
     ]);
     iconSlotForRow.push(null);
 
@@ -529,24 +550,21 @@ export async function exportToPDF(
         const nTx = sortedTxs.length;
         if (ri < nTx) return;
 
-        const greenBg: [number, number, number] = [187, 247, 208];
         const greenTxt: [number, number, number] = [22, 101, 52];
-        const redBg: [number, number, number] = [254, 202, 202];
-        const redTxt: [number, number, number] = [153, 27, 27];
-        const blackBg: [number, number, number] = [17, 24, 39];
-        const whiteTxt: [number, number, number] = [255, 255, 255];
+        const redTxt: [number, number, number] = [185, 28, 28];
+        const blackTxt: [number, number, number] = [35, 35, 35];
+        const whiteBg: [number, number, number] = [255, 255, 255];
+
+        data.cell.styles.fillColor = whiteBg;
 
         if (ri === nTx) {
-          data.cell.styles.fillColor = greenBg;
           data.cell.styles.textColor = greenTxt;
-          data.cell.styles.fontStyle = "normal";
+          data.cell.styles.fontStyle = "bold";
         } else if (ri === nTx + 1) {
-          data.cell.styles.fillColor = redBg;
           data.cell.styles.textColor = redTxt;
-          data.cell.styles.fontStyle = "normal";
+          data.cell.styles.fontStyle = "bold";
         } else if (ri === nTx + 2) {
-          data.cell.styles.fillColor = blackBg;
-          data.cell.styles.textColor = whiteTxt;
+          data.cell.styles.textColor = blackTxt;
           data.cell.styles.fontStyle = "bold";
         }
       },
