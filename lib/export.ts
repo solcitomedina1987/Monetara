@@ -257,6 +257,23 @@ async function fetchImageDataUrl(url: string): Promise<ImageData | null> {
   }
 }
 
+/** Logo del reporte (public/logo-monetara-logo.png). */
+async function loadPdfReportLogoDataUrl(): Promise<string | null> {
+  try {
+    const res = await fetch("/logo-monetara-logo.png");
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function buildAccountIconCache(txs: TransactionWithRelations[]): Promise<Map<string, ImageData | null>> {
   const byUrl = new Map<string, ImageData | null>();
   const urls = new Set<string>();
@@ -301,6 +318,31 @@ export async function exportToPDF(
   const grayLine: [number, number, number] = [190, 190, 190];
   const grayAlt: [number, number, number] = [246, 246, 246];
 
+  const reportLogoDataUrl = await loadPdfReportLogoDataUrl();
+  const LOGO_W_MM = 38;
+  const LOGO_H_MM = 11;
+  const logoPagesStamped = new Set<number>();
+
+  const stampReportLogoForPage = (pdf: typeof doc, pageNum: number) => {
+    if (!reportLogoDataUrl || logoPagesStamped.has(pageNum)) return;
+    logoPagesStamped.add(pageNum);
+    const fmt: "PNG" | "JPEG" =
+      reportLogoDataUrl.includes("image/jpeg") || reportLogoDataUrl.includes("image/jpg") ? "JPEG" : "PNG";
+
+    try {
+      pdf.addImage(
+        reportLogoDataUrl,
+        fmt,
+        pageWidth - margin - LOGO_W_MM,
+        margin - 1,
+        LOGO_W_MM,
+        LOGO_H_MM
+      );
+    } catch {
+      /* formato no soportado por addImage */
+    }
+  };
+
   if (transactions.length === 0) {
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
@@ -309,6 +351,7 @@ export async function exportToPDF(
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.text("No hay movimientos para exportar con los filtros actuales.", margin, margin + 16);
+    stampReportLogoForPage(doc, 1);
     doc.save(filename ?? `movimientos_${format(new Date(), "yyyy-MM-dd")}.pdf`);
     return;
   }
@@ -422,22 +465,22 @@ export async function exportToPDF(
 
     body.push([
       { content: "", colSpan: 3 },
-      { content: "Subtotal Ingresos", styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
-      { content: moneyPlain(ing), styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
+      { content: "Subtotal Ingresos", styles: { halign: "right", fontStyle: "normal" } },
+      { content: moneyPlain(ing), styles: { halign: "right", fontStyle: "normal" } },
     ]);
     iconSlotForRow.push(null);
 
     body.push([
       { content: "", colSpan: 3 },
-      { content: "Subtotal Gastos", styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
-      { content: moneyPlain(gas), styles: { halign: "right", fontStyle: "normal", textColor: [40, 40, 40] } },
+      { content: "Subtotal Gastos", styles: { halign: "right", fontStyle: "normal" } },
+      { content: `${sym} -${formatMoneyPdfPlain(gas)}`, styles: { halign: "right", fontStyle: "normal" } },
     ]);
     iconSlotForRow.push(null);
 
     body.push([
       { content: "", colSpan: 3 },
-      { content: "Total", styles: { halign: "right", fontStyle: "bold", textColor: [20, 20, 20] } },
-      { content: moneyTotal(total), styles: { halign: "right", fontStyle: "bold", textColor: [20, 20, 20] } },
+      { content: "Total", styles: { halign: "right", fontStyle: "bold" } },
+      { content: moneyTotal(total), styles: { halign: "right", fontStyle: "bold" } },
     ]);
     iconSlotForRow.push(null);
 
@@ -482,9 +525,33 @@ export async function exportToPDF(
       },
       didParseCell: (data) => {
         if (data.section !== "body") return;
-        if (data.row.index >= sortedTxs.length) {
-          data.cell.styles.fillColor = [255, 255, 255];
+        const ri = data.row.index;
+        const nTx = sortedTxs.length;
+        if (ri < nTx) return;
+
+        const greenBg: [number, number, number] = [187, 247, 208];
+        const greenTxt: [number, number, number] = [22, 101, 52];
+        const redBg: [number, number, number] = [254, 202, 202];
+        const redTxt: [number, number, number] = [153, 27, 27];
+        const blackBg: [number, number, number] = [17, 24, 39];
+        const whiteTxt: [number, number, number] = [255, 255, 255];
+
+        if (ri === nTx) {
+          data.cell.styles.fillColor = greenBg;
+          data.cell.styles.textColor = greenTxt;
+          data.cell.styles.fontStyle = "normal";
+        } else if (ri === nTx + 1) {
+          data.cell.styles.fillColor = redBg;
+          data.cell.styles.textColor = redTxt;
+          data.cell.styles.fontStyle = "normal";
+        } else if (ri === nTx + 2) {
+          data.cell.styles.fillColor = blackBg;
+          data.cell.styles.textColor = whiteTxt;
+          data.cell.styles.fontStyle = "bold";
         }
+      },
+      didDrawPage: (hookData) => {
+        stampReportLogoForPage(doc, hookData.pageNumber);
       },
       didDrawCell: (data) => {
         if (data.section !== "body") return;
