@@ -123,6 +123,14 @@ export function TransactionFormPage({
     }
   };
 
+  const selectExistingTag = (tag: Tag) => {
+    if (selectedTagIds.includes(tag.id)) return;
+    setSelectedTagIds((prev) => [...prev, tag.id]);
+    setTagInput("");
+    setTagDropdownOpen(false);
+    setTimeout(() => tagInputRef.current?.focus(), 0);
+  };
+
   const handleAddTag = async (name?: string) => {
     const tagName = (name ?? tagInput).trim();
     if (!tagName) return;
@@ -130,8 +138,8 @@ export function TransactionFormPage({
       const tag = await upsertTag(tagName);
       if (!allTags.find((t) => t.id === tag.id)) setAllTags((prev) => [...prev, tag]);
       if (!selectedTagIds.includes(tag.id)) setSelectedTagIds((prev) => [...prev, tag.id]);
-      // Clear input and keep focus so user can keep adding tags
       setTagInput("");
+      setTagDropdownOpen(false);
       setTimeout(() => tagInputRef.current?.focus(), 0);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
@@ -199,7 +207,12 @@ export function TransactionFormPage({
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0 touch-manipulation sm:h-10 sm:w-10"
+          onClick={() => router.back()}
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Nuevo Movimiento</h1>
@@ -410,6 +423,7 @@ export function TransactionFormPage({
                         {tag.nombre}
                         <button
                           type="button"
+                          className="inline-flex min-h-8 min-w-8 touch-manipulation items-center justify-center rounded-sm"
                           onClick={() => setSelectedTagIds((p) => p.filter((tid) => tid !== id))}
                         >
                           <X className="h-3 w-3 hover:text-destructive" />
@@ -424,11 +438,14 @@ export function TransactionFormPage({
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <input
                   ref={tagInputRef}
-                  className="flex h-9 w-full rounded-md border bg-background pl-8 pr-3 py-2 text-sm shadow-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+                  className="flex h-11 w-full touch-manipulation rounded-md border bg-background pl-8 pr-3 py-2 text-sm shadow-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground sm:h-9"
                   placeholder="Buscar o crear etiqueta..."
                   value={tagInput}
-                  onChange={(e) => { setTagInput(e.target.value); setTagDropdownOpen(e.target.value.trim().length > 0); }}
-                  onFocus={() => { if (tagInput.trim()) setTagDropdownOpen(true); }}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setTagDropdownOpen(true);
+                  }}
+                  onFocus={() => setTagDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setTagDropdownOpen(false), 200)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -437,16 +454,19 @@ export function TransactionFormPage({
                     }
                   }}
                 />
-                {tagDropdownOpen && tagInput.trim().length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md py-1">
+                {tagDropdownOpen && (filteredTags.length > 0 || showCreateTag || tagInput.trim().length > 0) && (
+                  <div
+                    className="absolute z-50 mt-1 w-full rounded-md border bg-popover py-1 shadow-md"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
                     {filteredTags.map((tag) => (
                       <button
                         key={tag.id}
                         type="button"
-                        className="w-full text-left text-sm px-3 py-2 hover:bg-accent transition-colors"
+                        className="min-h-11 w-full touch-manipulation px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          handleAddTag(tag.nombre);
+                          selectExistingTag(tag);
                         }}
                       >
                         {tag.nombre}
@@ -455,18 +475,18 @@ export function TransactionFormPage({
                     {showCreateTag && (
                       <button
                         type="button"
-                        className="w-full text-left text-sm px-3 py-2 hover:bg-accent text-primary flex items-center gap-2"
+                        className="flex min-h-11 w-full touch-manipulation items-center gap-2 px-3 py-2.5 text-left text-sm text-primary transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           handleAddTag();
                         }}
                       >
-                        <Plus className="h-3.5 w-3.5" />
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
                         Crear etiqueta "{tagInput.trim()}"
                       </button>
                     )}
-                    {filteredTags.length === 0 && !showCreateTag && (
-                      <p className="text-xs text-muted-foreground px-3 py-2">Sin resultados</p>
+                    {filteredTags.length === 0 && !showCreateTag && tagInput.trim().length > 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
                     )}
                   </div>
                 )}

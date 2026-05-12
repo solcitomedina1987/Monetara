@@ -1,20 +1,23 @@
-import { getTransactions } from "@/app/actions/transactions";
+import { getTransactions, getExpensesByCategory, getExpensesByTag } from "@/app/actions/transactions";
 import { getActiveAccounts } from "@/app/actions/accounts";
-import { getActiveCategories } from "@/app/actions/categories";
 import { ReportsClient } from "@/components/dashboard/reports-client";
 
+const INITIAL_FILTERS = { periodo: "mes_actual" as const };
+
 export default async function ReportsPage() {
-  const [transactions, accounts, categories] = await Promise.all([
-    getTransactions({}),
+  const [transactions, accounts, expensesByCategory, expensesByTag] = await Promise.all([
+    getTransactions(INITIAL_FILTERS),
     getActiveAccounts(),
-    getActiveCategories(),
+    getExpensesByCategory(INITIAL_FILTERS),
+    getExpensesByTag(INITIAL_FILTERS),
   ]);
 
   return (
     <ReportsClient
       initialTransactions={transactions}
+      initialExpensesByCategory={expensesByCategory}
+      initialExpensesByTag={expensesByTag}
       accounts={accounts}
-      categories={categories}
     />
   );
 }

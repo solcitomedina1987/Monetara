@@ -9,8 +9,9 @@ import * as LucideIcons from "lucide-react";
 import {
   Plus, Download, Trash2, Pencil, ArrowLeftRight,
   X, Loader2,
-  Tag as TagIcon, FolderOpen, Wallet, Mail, FileText, Sheet,
+  FolderOpen, Wallet, Mail, FileText, Sheet,
   FileSpreadsheet, ArrowUpCircle, ArrowDownCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +28,7 @@ import {
 import { getTransactions, deleteTransaction, getTotalBalance } from "@/app/actions/transactions";
 import { ImportTransactionsDialog } from "./import-transactions-dialog";
 import { toast } from "@/hooks/use-toast";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import {
   applyTransactionToRunningBalance,
   sortTxsWithinDayForBalance,
@@ -165,6 +166,7 @@ export function TransactionsClient({
   const [exporting, setExporting] = useState(false);
 
   const [importOpen, setImportOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Pre-fill email from profile
   useEffect(() => {
@@ -325,32 +327,30 @@ export function TransactionsClient({
         <div>
           <h1 className="text-2xl font-bold">Movimientos</h1>
         </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          {/* File actions group */}
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <Download className="h-4 w-4 mr-1.5 rotate-180" />
-            Importar
-          </Button>
-          <Button variant="outline" size="sm" onClick={openExportDialog}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Exportar
-          </Button>
-
-          {/* Quick-add actions */}
+        <div className="flex flex-wrap items-center gap-2">
           <Link href="/transactions/new?tipo=ingreso">
-            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white gap-1.5 h-8 px-3 text-xs">
+            <Button
+              size="sm"
+              className="min-h-11 touch-manipulation gap-1.5 bg-green-600 px-3 text-xs text-white hover:bg-green-700 sm:min-h-8"
+            >
               <ArrowUpCircle className="h-3.5 w-3.5" />
               Ingreso
             </Button>
           </Link>
           <Link href="/transactions/new?tipo=gasto">
-            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white gap-1.5 h-8 px-3 text-xs">
+            <Button
+              size="sm"
+              className="min-h-11 touch-manipulation gap-1.5 bg-red-600 px-3 text-xs text-white hover:bg-red-700 sm:min-h-8"
+            >
               <ArrowDownCircle className="h-3.5 w-3.5" />
               Gasto
             </Button>
           </Link>
           <Link href="/transactions/new?tipo=transferencia">
-            <Button size="sm" className="bg-[#0e415f] hover:bg-[#1f628e] text-white dark:bg-[#f4f0e0] dark:hover:bg-[#e8e4d4] dark:text-[#0e415f] gap-1.5 h-8 px-3 text-xs">
+            <Button
+              size="sm"
+              className="min-h-11 touch-manipulation gap-1.5 bg-[#0e415f] px-3 text-xs text-white hover:bg-[#1f628e] dark:bg-[#f4f0e0] dark:text-[#0e415f] dark:hover:bg-[#e8e4d4] sm:min-h-8"
+            >
               <ArrowLeftRight className="h-3.5 w-3.5" />
               Transferencia
             </Button>
@@ -358,10 +358,29 @@ export function TransactionsClient({
         </div>
       </div>
 
-      {/* Barra de filtros (siempre visible) */}
-      <Card>
-        <CardContent className="pt-4 pb-4 space-y-3">
-          <div className="flex flex-wrap gap-3 items-end">
+      {/* Filtros + import/export */}
+      <Card className="scroll-mt-4">
+        <CardContent className="space-y-3 pt-4 pb-4">
+          <div className="flex items-center justify-between gap-2 md:hidden">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 flex-1 touch-manipulation gap-2 sm:min-h-9"
+              aria-expanded={mobileFiltersOpen}
+              onClick={() => setMobileFiltersOpen((o) => !o)}
+            >
+              <SlidersHorizontal className="h-4 w-4 shrink-0" />
+              {mobileFiltersOpen ? "Ocultar filtros" : "Filtrar"}
+            </Button>
+          </div>
+
+          <div
+            className={cn(
+              "space-y-3",
+              !mobileFiltersOpen && "max-md:hidden"
+            )}
+          >
+          <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1 min-w-[10rem] flex-1 basis-[min(100%,12rem)]">
               <Label className="text-xs text-muted-foreground">Cuenta</Label>
               <Select
@@ -370,7 +389,7 @@ export function TransactionsClient({
                   applyFilters({ ...filters, account_id: v === "todas" ? undefined : v })
                 }
               >
-                <SelectTrigger className="h-8 text-xs w-full min-w-0">
+                <SelectTrigger className="h-11 min-h-11 w-full min-w-0 touch-manipulation text-xs sm:h-8 sm:min-h-8">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -389,7 +408,7 @@ export function TransactionsClient({
               <div className="relative">
                 <Input
                   ref={catInputRef}
-                  className="h-8 text-xs pr-7"
+                  className="h-11 min-h-11 touch-manipulation pr-7 text-xs sm:h-8 sm:min-h-8"
                   placeholder={selectedCategory ? selectedCategory.nombre : "Buscar categoría..."}
                   value={catSearch}
                   onChange={(e) => {
@@ -413,10 +432,13 @@ export function TransactionsClient({
                   </button>
                 )}
                 {catDropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border bg-popover shadow-md">
+                  <div
+                    className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover shadow-md"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
                     <button
                       type="button"
-                      className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors text-muted-foreground"
+                      className="min-h-11 w-full touch-manipulation px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
                       onMouseDown={(e) => {
                         e.preventDefault();
                         setCatSearch("");
@@ -432,7 +454,7 @@ export function TransactionsClient({
                         <button
                           key={cat.id}
                           type="button"
-                          className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
+                          className="flex min-h-11 w-full touch-manipulation items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
                           onMouseDown={(e) => {
                             e.preventDefault();
                             setCatSearch("");
@@ -485,7 +507,7 @@ export function TransactionsClient({
               <div className="relative">
                 <Input
                   ref={tagInputRef}
-                  className="h-8 text-xs"
+                  className="h-11 min-h-11 touch-manipulation text-xs sm:h-8 sm:min-h-8"
                   placeholder="Buscar etiqueta..."
                   value={tagSearch}
                   onChange={(e) => {
@@ -496,7 +518,10 @@ export function TransactionsClient({
                   onBlur={() => setTimeout(() => setTagDropdownOpen(false), 150)}
                 />
                 {tagDropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full max-h-40 overflow-y-auto rounded-md border bg-popover shadow-md">
+                  <div
+                    className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border bg-popover shadow-md"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
                     {tags
                       .filter(
                         (t) =>
@@ -507,7 +532,7 @@ export function TransactionsClient({
                         <button
                           key={tag.id}
                           type="button"
-                          className="w-full text-left text-xs px-3 py-2 hover:bg-accent transition-colors"
+                          className="min-h-11 w-full touch-manipulation px-3 py-2.5 text-left text-xs transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
                           onMouseDown={(e) => {
                             e.preventDefault();
                             const newIds = [...(filters.tag_ids ?? []), tag.id];
@@ -539,7 +564,7 @@ export function TransactionsClient({
                   applyFilters({ ...filters, periodo: v as TransactionPeriod })
                 }
               >
-                <SelectTrigger className="h-8 text-xs w-full min-w-0">
+                <SelectTrigger className="h-11 min-h-11 w-full min-w-0 touch-manipulation text-xs sm:h-8 sm:min-h-8">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -554,30 +579,30 @@ export function TransactionsClient({
               </Select>
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-[9rem] shrink-0 pb-0.5">
-              <div className="flex items-center gap-2">
+            <div className="flex min-h-[44px] flex-wrap items-center gap-x-4 gap-y-2 pb-0.5 min-w-[9rem] shrink-0">
+              <div className="flex min-h-11 items-center gap-2 sm:min-h-8">
                 <Checkbox
                   id="filtro-ingresos"
                   checked={filters.showIngresos !== false}
                   onCheckedChange={(v) =>
                     applyFilters({ ...filters, showIngresos: v === true })
                   }
-                  className="border-green-600/45 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600 data-[state=checked]:text-white dark:border-green-500/55"
+                  className="h-5 w-5 touch-manipulation border-green-600/45 data-[state=checked]:border-green-600 data-[state=checked]:bg-green-600 data-[state=checked]:text-white dark:border-green-500/55"
                 />
-                <Label htmlFor="filtro-ingresos" className="text-xs font-normal cursor-pointer whitespace-nowrap">
+                <Label htmlFor="filtro-ingresos" className="min-h-11 cursor-pointer whitespace-nowrap py-2 text-xs font-normal leading-none sm:min-h-0 sm:py-0">
                   Ingresos
                 </Label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex min-h-11 items-center gap-2 sm:min-h-8">
                 <Checkbox
                   id="filtro-gastos"
                   checked={filters.showGastos !== false}
                   onCheckedChange={(v) =>
                     applyFilters({ ...filters, showGastos: v === true })
                   }
-                  className="border-red-600/45 data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600 data-[state=checked]:text-white dark:border-red-500/55"
+                  className="h-5 w-5 touch-manipulation border-red-600/45 data-[state=checked]:border-red-600 data-[state=checked]:bg-red-600 data-[state=checked]:text-white dark:border-red-500/55"
                 />
-                <Label htmlFor="filtro-gastos" className="text-xs font-normal cursor-pointer whitespace-nowrap">
+                <Label htmlFor="filtro-gastos" className="min-h-11 cursor-pointer whitespace-nowrap py-2 text-xs font-normal leading-none sm:min-h-0 sm:py-0">
                   Gastos
                 </Label>
               </div>
@@ -590,7 +615,7 @@ export function TransactionsClient({
                 <Label className="text-xs text-muted-foreground">Desde</Label>
                 <Input
                   type="date"
-                  className="h-8 text-xs"
+                  className="h-11 min-h-11 touch-manipulation text-xs sm:h-8 sm:min-h-8"
                   value={filters.fechaDesde ?? ""}
                   onChange={(e) => applyFilters({ ...filters, fechaDesde: e.target.value })}
                 />
@@ -599,7 +624,7 @@ export function TransactionsClient({
                 <Label className="text-xs text-muted-foreground">Hasta</Label>
                 <Input
                   type="date"
-                  className="h-8 text-xs"
+                  className="h-11 min-h-11 touch-manipulation text-xs sm:h-8 sm:min-h-8"
                   value={filters.fechaHasta ?? ""}
                   onChange={(e) => applyFilters({ ...filters, fechaHasta: e.target.value })}
                 />
@@ -608,9 +633,36 @@ export function TransactionsClient({
           )}
 
           <div className="flex gap-2 pt-1">
-            <Button variant="ghost" size="sm" className="text-xs h-8" onClick={clearFilters}>
-              <X className="h-3.5 w-3.5 mr-1" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 touch-manipulation text-xs sm:h-8"
+              onClick={clearFilters}
+            >
+              <X className="mr-1 h-3.5 w-3.5" />
               Limpiar filtros
+            </Button>
+          </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 touch-manipulation sm:h-8"
+              onClick={() => setImportOpen(true)}
+            >
+              <Download className="mr-1.5 h-4 w-4 rotate-180" />
+              Importar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 touch-manipulation sm:h-8"
+              onClick={openExportDialog}
+            >
+              <Download className="mr-1.5 h-4 w-4" />
+              Exportar
             </Button>
           </div>
         </CardContent>
@@ -671,56 +723,62 @@ export function TransactionsClient({
                         </div>
 
                         {/* Info block */}
-                        <div className="flex-1 min-w-0">
-                          {/* Line 1: category icon + name + tags */}
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             {t.tipo !== "transferencia" && (
                               <span className="shrink-0 text-muted-foreground">
                                 <DynamicCategoryIcon iconName={t.category?.icono} className="h-3.5 w-3.5" />
                               </span>
                             )}
-                            <p className="text-sm font-medium truncate">
+                            <p className="truncate text-sm font-medium">
                               {t.tipo === "transferencia"
                                 ? `${t.account?.nombre} → ${t.to_account?.nombre}`
-                                : t.category?.nombre ?? "Sin categoría"
-                              }
+                                : t.category?.nombre ?? "Sin categoría"}
                             </p>
-                            {t.tags?.map((tag) => (
-                              <span
-                                key={tag.id}
-                                className="hidden sm:inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border"
-                              >
-                                <TagIcon className="h-2.5 w-2.5" />
-                                {tag.nombre}
-                              </span>
-                            ))}
                           </div>
 
-                          {/* Line 2: notes — only when not empty */}
+                          {t.tags && t.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {t.tags.map((tag) => (
+                                <Badge
+                                  key={tag.id}
+                                  variant="outline"
+                                  className="h-auto max-w-full truncate border-muted-foreground/25 px-1.5 py-0 text-[11px] font-normal text-muted-foreground"
+                                >
+                                  {tag.nombre}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+
                           {t.notas?.trim() && (
-                            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+                            <p className="truncate text-[11px] leading-snug text-muted-foreground/80">
                               Nota: {t.notas}
                             </p>
                           )}
                         </div>
 
                         {/* Amount */}
-                        <p className={`text-sm font-bold shrink-0 ${
-                          t.tipo === "ingreso" ? "text-green-600 dark:text-green-400" :
-                          t.tipo === "gasto"   ? "text-red-600 dark:text-red-400" :
-                          "text-blue-600 dark:text-blue-400"
-                        }`}>
+                        <p
+                          className={`shrink-0 text-sm font-bold ${
+                            t.tipo === "ingreso"
+                              ? "text-green-600 dark:text-green-400"
+                              : t.tipo === "gasto"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-blue-600 dark:text-blue-400"
+                          }`}
+                        >
                           {t.tipo === "ingreso" ? "+" : t.tipo === "gasto" ? "-" : ""}
                           {formatCurrency(Number(t.monto), t.account?.moneda ?? "ARS")}
                         </p>
 
-                        {/* Actions — always visible, red on hover */}
-                        <div className="flex gap-0.5 shrink-0">
-                          <Link href={`/transactions/${t.id}/edit`}>
+                        {/* Actions */}
+                        <div className="flex shrink-0 gap-0.5">
+                          <Link href={`/transactions/${t.id}/edit`} className="touch-manipulation">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                              className="h-11 w-11 text-muted-foreground transition-colors hover:text-red-600 dark:hover:text-red-400 sm:h-8 sm:w-8"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -728,7 +786,7 @@ export function TransactionsClient({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                            className="h-11 w-11 touch-manipulation text-muted-foreground transition-colors hover:text-red-600 dark:hover:text-red-400 sm:h-8 sm:w-8"
                             onClick={() => setDeleteId(t.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />

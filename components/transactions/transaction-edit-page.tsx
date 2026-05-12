@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Plus, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, X, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,9 +39,16 @@ interface Props {
 export function TransactionEditPage({ transaction, accounts, categories, tags: initialTags }: Props) {
   const router = useRouter();
   const [tipo, setTipo] = useState<TransactionType>(transaction.tipo);
-  const [allTags, setAllTags] = useState(initialTags);
+  const [allTags, setAllTags] = useState<Tag[]>(() => {
+    const byId = new Map<string, Tag>();
+    initialTags.forEach((t) => byId.set(t.id, t));
+    transaction.tags?.forEach((t) => byId.set(t.id, t));
+    return Array.from(byId.values());
+  });
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(transaction.tags?.map((t) => t.id) ?? []);
   const [tagInput, setTagInput] = useState("");
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
@@ -56,6 +63,24 @@ export function TransactionEditPage({ transaction, accounts, categories, tags: i
     },
   });
 
+  const filteredTags = allTags.filter(
+    (t) =>
+      t.estado === "activo" &&
+      t.nombre.toLowerCase().includes(tagInput.toLowerCase()) &&
+      !selectedTagIds.includes(t.id)
+  );
+  const showCreateTag =
+    tagInput.trim().length >= 2 &&
+    !allTags.some((t) => t.nombre.toLowerCase() === tagInput.trim().toLowerCase());
+
+  const selectExistingTag = (tag: Tag) => {
+    if (selectedTagIds.includes(tag.id)) return;
+    setSelectedTagIds((prev) => [...prev, tag.id]);
+    setTagInput("");
+    setTagDropdownOpen(false);
+    setTimeout(() => tagInputRef.current?.focus(), 0);
+  };
+
   const handleAddTag = async () => {
     const name = tagInput.trim();
     if (!name) return;
@@ -64,6 +89,8 @@ export function TransactionEditPage({ transaction, accounts, categories, tags: i
       if (!allTags.find((t) => t.id === tag.id)) setAllTags((prev) => [...prev, tag]);
       if (!selectedTagIds.includes(tag.id)) setSelectedTagIds((prev) => [...prev, tag.id]);
       setTagInput("");
+      setTagDropdownOpen(false);
+      setTimeout(() => tagInputRef.current?.focus(), 0);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
     }
@@ -93,7 +120,12 @@ export function TransactionEditPage({ transaction, accounts, categories, tags: i
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0 touch-manipulation sm:h-10 sm:w-10"
+          onClick={() => router.back()}
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Editar Movimiento</h1>
@@ -158,30 +190,87 @@ export function TransactionEditPage({ transaction, accounts, categories, tags: i
             )}
 
             <div className="space-y-2">
-              <Label>Etiquetas</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Etiqueta..."
+              <Label>
+                Etiquetas{" "}
+                <span className="text-xs font-normal text-muted-foreground">(opcional)</span>
+              </Label>
+
+              {selectedTagIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedTagIds.map((id) => {
+                    const tag = allTags.find((t) => t.id === id);
+                    return tag ? (
+                      <Badge key={id} variant="secondary" className="gap-1 pl-2.5 pr-1.5">
+                        {tag.nombre}
+                        <button
+                          type="button"
+                          className="inline-flex min-h-8 min-w-8 touch-manipulation items-center justify-center rounded-sm"
+                          onClick={() => setSelectedTagIds((p) => p.filter((tid) => tid !== id))}
+                        >
+                          <X className="h-3 w-3 hover:text-destructive" />
+                        </button>
+                      </Badge>
+                    ) : null;
+                  })}
+                </div>
+              )}
+
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  ref={tagInputRef}
+                  className="flex h-11 w-full touch-manipulation rounded-md border bg-background pl-8 pr-3 py-2 text-sm shadow-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground sm:h-9"
+                  placeholder="Buscar o crear etiqueta..."
                   value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } }}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setTagDropdownOpen(true);
+                  }}
+                  onFocus={() => setTagDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setTagDropdownOpen(false), 200)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (tagInput.trim()) handleAddTag();
+                    }
+                  }}
                 />
-                <Button type="button" variant="outline" size="sm" onClick={handleAddTag}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {selectedTagIds.map((id) => {
-                  const tag = allTags.find((t) => t.id === id);
-                  return tag ? (
-                    <Badge key={id} variant="secondary" className="gap-1">
-                      {tag.nombre}
-                      <button type="button" onClick={() => setSelectedTagIds((p) => p.filter((tid) => tid !== id))}>
-                        <X className="h-3 w-3" />
+                {tagDropdownOpen && (filteredTags.length > 0 || showCreateTag || tagInput.trim().length > 0) && (
+                  <div
+                    className="absolute z-50 mt-1 w-full rounded-md border bg-popover py-1 shadow-md"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {filteredTags.map((tag) => (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        className="min-h-11 w-full touch-manipulation px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectExistingTag(tag);
+                        }}
+                      >
+                        {tag.nombre}
                       </button>
-                    </Badge>
-                  ) : null;
-                })}
+                    ))}
+                    {showCreateTag && (
+                      <button
+                        type="button"
+                        className="flex min-h-11 w-full touch-manipulation items-center gap-2 px-3 py-2.5 text-left text-sm text-primary transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleAddTag();
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
+                        Crear etiqueta "{tagInput.trim()}"
+                      </button>
+                    )}
+                    {filteredTags.length === 0 && !showCreateTag && tagInput.trim().length > 0 && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

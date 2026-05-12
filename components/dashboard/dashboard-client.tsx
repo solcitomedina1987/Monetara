@@ -30,6 +30,12 @@ import {
 } from "@/lib/transaction-balance";
 import { usePersistedState } from "@/lib/hooks/use-persisted-state";
 import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance } from "@/app/actions/transactions";
+import {
+  groupSmallSlices,
+  groupSmallTagSlices,
+  type ExpenseEntry,
+  type TagExpenseEntry,
+} from "@/lib/expense-chart-grouping";
 import type { Account, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
 
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
@@ -64,47 +70,7 @@ function getDefaultCustomDates() {
   };
 }
 
-type ExpenseEntry = { name: string; value: number; category_id: string | null };
-type GroupedEntry = ExpenseEntry & { isVarios?: boolean };
-
-type TagEntry = { name: string; value: number; tag_id: string | null };
-type GroupedTagEntry = TagEntry & { isVarios?: boolean };
-
-/** Group categories < 5% of total into "Varios" */
-function groupSmallSlices(data: ExpenseEntry[]): GroupedEntry[] {
-  const total = data.reduce((s, e) => s + e.value, 0);
-  if (total === 0) return data;
-  const threshold = total * 0.05;
-  const main: GroupedEntry[] = data.filter((e) => e.value >= threshold);
-  const varios = data.filter((e) => e.value < threshold);
-  if (varios.length > 0) {
-    main.push({
-      name: "Varios",
-      value: varios.reduce((s, e) => s + e.value, 0),
-      category_id: null,
-      isVarios: true,
-    });
-  }
-  return main;
-}
-
-/** Group tags < 5% of total into "Varios" */
-function groupSmallTagSlices(data: TagEntry[]): GroupedTagEntry[] {
-  const total = data.reduce((s, e) => s + e.value, 0);
-  if (total === 0) return data;
-  const threshold = total * 0.05;
-  const main: GroupedTagEntry[] = data.filter((e) => e.value >= threshold);
-  const varios = data.filter((e) => e.value < threshold);
-  if (varios.length > 0) {
-    main.push({
-      name: "Varios",
-      value: varios.reduce((s, e) => s + e.value, 0),
-      tag_id: null,
-      isVarios: true,
-    });
-  }
-  return main;
-}
+type TagEntry = TagExpenseEntry;
 
 interface DashboardClientProps {
   accounts: Account[];
@@ -282,10 +248,10 @@ export function DashboardClient({
   const selectedAccountData = accounts.find((a) => a.id === selectedAccount);
   const currency = selectedAccountData?.moneda ?? "ARS";
 
-  const groupedExpenses = useMemo<GroupedEntry[]>(() => groupSmallSlices(expenses), [expenses]);
-  const groupedModalExpenses = useMemo<GroupedEntry[]>(() => groupSmallSlices(modalExpenses), [modalExpenses]);
-  const groupedTagExpenses = useMemo<GroupedTagEntry[]>(() => groupSmallTagSlices(expensesByTag), [expensesByTag]);
-  const groupedModalTagExpenses = useMemo<GroupedTagEntry[]>(() => groupSmallTagSlices(modalExpensesByTag), [modalExpensesByTag]);
+  const groupedExpenses = useMemo(() => groupSmallSlices(expenses), [expenses]);
+  const groupedModalExpenses = useMemo(() => groupSmallSlices(modalExpenses), [modalExpenses]);
+  const groupedTagExpenses = useMemo(() => groupSmallTagSlices(expensesByTag), [expensesByTag]);
+  const groupedModalTagExpenses = useMemo(() => groupSmallTagSlices(modalExpensesByTag), [modalExpensesByTag]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
