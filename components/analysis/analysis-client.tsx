@@ -203,6 +203,8 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
           markdown: string | null;
           fallback?: boolean;
           error?: string | null;
+          hint?: string | null;
+          debug?: string;
         };
 
         if (res.status === 401) {
@@ -215,9 +217,6 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
         if (json.markdown?.trim()) {
           setInsightsMarkdown(json.markdown.trim());
           setInsightsSource("ai");
-          if (json.error === "gemini_error" && !opts?.silent) {
-            setInsightsBanner(null);
-          }
           return;
         }
 
@@ -234,11 +233,13 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
 
         setInsightsMarkdown(statisticalMd);
         setInsightsSource("stats");
-        setInsightsBanner("Estamos procesando tus datos estadísticamente…");
+        const hint = json.hint ?? "Estamos procesando tus datos estadísticamente…";
+        const devNote = json.debug ? ` (${json.debug})` : "";
+        setInsightsBanner(`${hint}${devNote}`);
         if (!opts?.silent) {
           toast({
             title: "Análisis alternativo",
-            description: "Mostramos un resumen con reglas estadísticas locales.",
+            description: hint,
           });
         }
       } catch {
