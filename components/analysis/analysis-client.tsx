@@ -22,6 +22,7 @@ import {
   YAxis,
 } from "recharts";
 import ReactMarkdown from "react-markdown";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +40,7 @@ import { getTransactions } from "@/app/actions/transactions";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, cn } from "@/lib/utils";
 import { isValidTransactionPeriod } from "@/lib/analysis-period";
+import { buildAnalysisMatrix, type VariacionMesPar } from "@/lib/analysis-matrix";
 import {
   buildFinancialAiPayload,
   buildMonthlyChartSeries,
@@ -104,6 +106,11 @@ function persistAnalysisFilters(f: TransactionFilters) {
   try {
     localStorage.setItem(ANALYSIS_FILTER_KEY, JSON.stringify(f));
   } catch {}
+}
+
+function lastVariacionMes(variaciones: VariacionMesPar[] | undefined): VariacionMesPar | null {
+  if (!variaciones?.length) return null;
+  return variaciones[variaciones.length - 1] ?? null;
 }
 
 interface Props {
@@ -177,6 +184,21 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
 
   const aiPayload = useMemo(() => buildFinancialAiPayload(transactions, filters), [transactions, filters]);
 
+  const analysisMatrix = useMemo(
+    () => buildAnalysisMatrix(transactions, filters, accounts, categories, tagIdToName),
+    [transactions, filters, accounts, categories, tagIdToName]
+  );
+
+  const consolidadoUltimoMes = useMemo(
+    () => lastVariacionMes(analysisMatrix.consolidado_general.variaciones),
+    [analysisMatrix]
+  );
+
+  const insightsBody = useMemo(
+    () => ({ ...aiPayload, matriz_analisis: analysisMatrix }),
+    [aiPayload, analysisMatrix]
+  );
+
   const statisticalMd = useMemo(
     () =>
       generateStatisticalInsightsMarkdown(monthlySeries, aiPayload, {
@@ -187,7 +209,7 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
     [monthlySeries, aiPayload, selectedCategory?.nombre, tagIdToName, appliedTagSummary]
   );
 
-  const payloadKey = useMemo(() => JSON.stringify(aiPayload), [aiPayload]);
+  const payloadKey = useMemo(() => JSON.stringify(insightsBody), [insightsBody]);
 
   const requestInsights = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -197,7 +219,7 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
         const res = await fetch("/api/analysis/insights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(aiPayload),
+          body: JSON.stringify(insightsBody),
         });
         const json = (await res.json()) as {
           markdown: string | null;
@@ -250,7 +272,7 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
         setInsightsLoading(false);
       }
     },
-    [aiPayload, statisticalMd]
+    [insightsBody, statisticalMd]
   );
 
   useEffect(() => {
@@ -606,6 +628,145 @@ export function AnalysisClient({ initialTransactions, accounts, categories, tags
                 />
               </LineChart>
             </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Matriz de análisis (mes vs mes anterior)</CardTitle>
+          <CardDescription>
+            Comparativas porcentuales en el rango filtrado. Las tablas muestran el{" "}
+            <strong>último par de meses</strong> del período ({analysisMatrix.resumen_total_seleccion.mes_anterior_label ?? "—"} →{" "}
+            {analysisMatrix.resumen_total_seleccion.mes_actual_label ?? "—"}).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {filters.showIngresos !== false && (
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <p className="text-xs font-medium text-muted-foreground">Ingresos (paquete filtrado)</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">
+                  {formatCurrency(analysisMatrix.resumen_total_seleccion.ingresos_actual, displayCurrency)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  vs anterior: {formatCurrency(analysisMatrix.resumen_total_seleccion.ingresos_anterior, displayCurrency)}
+                </p>
+                <Badge variant="secondary" className="mt-2 font-mono text-xs">
+                  Δ {analysisMatrix.resumen_total_seleccion.ingresos_delta_etiqueta}
+                </Badge>
+              </div>
+            )}
+            {filters.showGastos !== false && (
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <p className="text-xs font-medium text-muted-foreground">Gastos (paquete filtrado)</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">
+                  {formatCurrency(analysisMatrix.resumen_total_seleccion.gastos_actual, displayCurrency)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  vs anterior: {formatCurrency(analysisMatrix.resumen_total_seleccion.gastos_anterior, displayCurrency)}
+                </p>
+                <Badge variant="secondary" className="mt-2 font-mono text-xs">
+                  Δ {analysisMatrix.resumen_total_seleccion.gastos_delta_etiqueta}
+                </Badge>
+              </div>
+            )}
+            <div className="rounded-lg border border-[#0e415f]/20 bg-[#f4f0e0]/30 p-4 dark:border-[#f4f0e0]/20 dark:bg-[#0e415f]/20 sm:col-span-2 lg:col-span-2">
+              <p className="text-xs font-medium text-[#0e415f] dark:text-[#f4f0e0]">Resumen del paquete seleccionado</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Totales del último mes del período frente al mes previo (todas las categorías y etiquetas incluidas en los
+                filtros actuales).
+              </p>
+            </div>
+          </div>
+
+          {consolidadoUltimoMes && consolidadoUltimoMes.filas.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">{analysisMatrix.consolidado_general.nombre}</h3>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[640px] text-left text-xs">
+                  <thead className="bg-muted/60">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Ruta</th>
+                      <th className="px-3 py-2 font-medium">Anterior</th>
+                      <th className="px-3 py-2 font-medium">Actual</th>
+                      <th className="px-3 py-2 font-medium">Variación</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {consolidadoUltimoMes.filas.slice(0, 14).map((row, idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="max-w-[280px] truncate px-3 py-2 text-muted-foreground" title={row.ruta}>
+                          {row.ruta}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{formatCurrency(row.monto_anterior, displayCurrency)}</td>
+                        <td className="px-3 py-2 tabular-nums">{formatCurrency(row.monto_actual, displayCurrency)}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={cn(
+                              "font-mono font-medium",
+                              row.delta_etiqueta === "Nuevo" && "text-blue-600 dark:text-blue-400",
+                              row.delta_etiqueta === "—" && "text-muted-foreground",
+                              (row.delta_pct ?? 0) > 0 && row.tipo === "gasto" && "text-red-600 dark:text-red-400",
+                              (row.delta_pct ?? 0) < 0 && row.tipo === "gasto" && "text-green-600 dark:text-green-400",
+                              (row.delta_pct ?? 0) > 0 && row.tipo === "ingreso" && "text-green-600 dark:text-green-400",
+                              (row.delta_pct ?? 0) < 0 && row.tipo === "ingreso" && "text-red-600 dark:text-red-400"
+                            )}
+                          >
+                            {row.delta_etiqueta}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No hay suficientes meses con movimientos para armar la matriz (se requieren al menos dos meses en el período).
+            </p>
+          )}
+
+          {analysisMatrix.por_cuenta.some((c) => (lastVariacionMes(c.variaciones)?.filas.length ?? 0) > 0) && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold">Por cuenta</h3>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {analysisMatrix.por_cuenta.map((cuenta) => {
+                  const v = lastVariacionMes(cuenta.variaciones);
+                  if (!v?.filas.length) return null;
+                  return (
+                    <div key={cuenta.cuenta_id} className="space-y-2 rounded-lg border p-3">
+                      <p className="text-sm font-medium">{cuenta.nombre}</p>
+                      <div className="overflow-x-auto rounded-md border">
+                        <table className="w-full min-w-[520px] text-left text-[11px]">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="px-2 py-1.5">Ruta</th>
+                              <th className="px-2 py-1.5">Ant.</th>
+                              <th className="px-2 py-1.5">Act.</th>
+                              <th className="px-2 py-1.5">Δ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {v.filas.slice(0, 8).map((row, idx) => (
+                              <tr key={idx} className="border-t">
+                                <td className="max-w-[220px] truncate px-2 py-1.5 text-muted-foreground" title={row.ruta}>
+                                  {row.ruta}
+                                </td>
+                                <td className="px-2 py-1.5 tabular-nums">{formatCurrency(row.monto_anterior, displayCurrency)}</td>
+                                <td className="px-2 py-1.5 tabular-nums">{formatCurrency(row.monto_actual, displayCurrency)}</td>
+                                <td className="px-2 py-1.5 font-mono">{row.delta_etiqueta}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
