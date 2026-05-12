@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, ArrowUpCircle, ArrowDownCircle, ArrowLeftRight,
-  Wallet, Tag, FolderOpen, BarChart3, X, UserCircle,
+  Wallet, Tag, FolderOpen, BarChart3, X, UserCircle, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ const navItems = [
   { href: "/accounts",     label: "Cuentas",      icon: Wallet },
   { href: "/categories",   label: "Categorías",   icon: FolderOpen },
   { href: "/tags",         label: "Etiquetas",    icon: Tag },
+  { href: "/analisis",     label: "Análisis",     icon: Sparkles },
   { href: "/reports",      label: "Reportes",     icon: BarChart3 },
   { href: "/perfil",       label: "Mi Perfil",    icon: UserCircle },
 ];
