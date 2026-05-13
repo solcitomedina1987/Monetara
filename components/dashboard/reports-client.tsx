@@ -338,32 +338,6 @@ export function ReportsClient({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">Reportes</h1>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 touch-manipulation sm:min-h-9"
-            onClick={() => exportToPDF(transactions, filters)}
-          >
-            <Download className="mr-1 h-3.5 w-3.5 shrink-0" /> PDF
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 touch-manipulation sm:min-h-9"
-            onClick={() => exportToExcel(transactions)}
-          >
-            <Download className="mr-1 h-3.5 w-3.5 shrink-0" /> Excel
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 touch-manipulation sm:min-h-9"
-            onClick={() => exportToCSV(transactions)}
-          >
-            <Download className="mr-1 h-3.5 w-3.5 shrink-0" /> CSV
-          </Button>
-        </div>
       </div>
 
       <TransactionFiltersBar
@@ -374,7 +348,38 @@ export function ReportsClient({
         categories={categories}
         tags={tags}
         idPrefix="rep-filtro"
-        filtersRowClassName="lg:flex-nowrap lg:gap-2 xl:overflow-x-auto"
+        filtersRowClassName="lg:flex-nowrap lg:gap-2"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 touch-manipulation sm:h-8"
+              onClick={() => exportToPDF(transactions, filters)}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+              Exportar PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 touch-manipulation sm:h-8"
+              onClick={() => exportToExcel(transactions)}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+              Exportar Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 touch-manipulation sm:h-8"
+              onClick={() => exportToCSV(transactions)}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+              Exportar CSV
+            </Button>
+          </>
+        }
       />
 
       {loading && (

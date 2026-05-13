@@ -95,8 +95,17 @@ export async function createTransaction(payload: {
   if (payload.tipo === "transferencia") {
     if (!payload.to_account_id) throw new Error("Cuenta destino requerida para transferencias");
 
-    const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const transferNote = `[Transferencia ref:${ref}]${payload.notas ? " · " + payload.notas : ""}`;
+    const notasOut = payload.notas?.trim() ? payload.notas.trim() : null;
+
+    const { data: transferCat } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("estado", "activo")
+      .ilike("nombre", "Transferencia")
+      .maybeSingle();
+
+    const transferCategoryId = transferCat?.id ?? null;
 
     const [gastoResult, ingresoResult] = await Promise.all([
       supabase
@@ -106,9 +115,9 @@ export async function createTransaction(payload: {
           tipo: "gasto",
           account_id: payload.account_id,
           to_account_id: payload.to_account_id,
-          category_id: null,
+          category_id: transferCategoryId,
           fecha: payload.fecha,
-          notas: transferNote,
+          notas: notasOut,
           user_id: user.id,
         })
         .select()
@@ -120,9 +129,9 @@ export async function createTransaction(payload: {
           tipo: "ingreso",
           account_id: payload.to_account_id,
           to_account_id: payload.account_id,
-          category_id: null,
+          category_id: transferCategoryId,
           fecha: payload.fecha,
-          notas: transferNote,
+          notas: notasOut,
           user_id: user.id,
         })
         .select()
@@ -153,6 +162,7 @@ export async function createTransaction(payload: {
 
     revalidatePath("/transactions");
     revalidatePath("/dashboard");
+    revalidatePath("/reports");
     return gastoResult.data as Transaction;
   }
 
@@ -171,6 +181,7 @@ export async function createTransaction(payload: {
 
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
   return data as Transaction;
 }
 
@@ -206,6 +217,7 @@ export async function updateTransaction(id: string, payload: {
 
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
   return data as Transaction;
 }
 
@@ -215,6 +227,7 @@ export async function deleteTransaction(id: string) {
   if (error) throw error;
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
 }
 
 export async function getDashboardStats(filters?: TransactionFilters) {

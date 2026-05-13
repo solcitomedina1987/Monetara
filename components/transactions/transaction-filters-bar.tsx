@@ -84,8 +84,8 @@ export function TransactionFiltersBar({
   };
 
   return (
-    <Card className={cn("scroll-mt-4", cardClassName)}>
-      <CardContent className="space-y-3 pt-4 pb-4">
+    <Card className={cn("scroll-mt-4 overflow-visible", cardClassName)}>
+      <CardContent className="space-y-3 overflow-visible pt-4 pb-4">
         <div className="flex items-center justify-between gap-2 md:hidden">
           <Button
             type="button"
@@ -99,11 +99,19 @@ export function TransactionFiltersBar({
           </Button>
         </div>
 
-        <div className={cn("space-y-3", !mobileFiltersOpen && "max-md:hidden")}>
+        <div
+          className={cn(
+            "space-y-3",
+            !mobileFiltersOpen ? "hidden md:block" : "block"
+          )}
+        >
           <div
-            className={cn("flex flex-wrap items-end gap-3", filtersRowClassName)}
+            className={cn(
+              "flex flex-wrap items-end gap-3 overflow-x-visible overflow-y-visible",
+              filtersRowClassName
+            )}
           >
-            <div className="min-w-[10rem] flex-1 basis-[min(100%,12rem)] space-y-1">
+            <div className="min-w-[12rem] flex-1 basis-[min(100%,14rem)] space-y-1">
               <Label className="text-xs text-muted-foreground">Cuenta</Label>
               <Select
                 value={filters.account_id ?? "todas"}
@@ -111,7 +119,7 @@ export function TransactionFiltersBar({
                   onFiltersChange({ ...filters, account_id: v === "todas" ? undefined : v })
                 }
               >
-                <SelectTrigger className="h-11 min-h-11 w-full min-w-0 touch-manipulation text-xs sm:h-8 sm:min-h-8">
+                <SelectTrigger className="h-11 min-h-11 w-full min-w-[12rem] max-w-full touch-manipulation text-xs sm:h-8 sm:min-h-8 [&>span]:line-clamp-2 [&>span]:text-left [&>span]:leading-snug">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -125,12 +133,12 @@ export function TransactionFiltersBar({
               </Select>
             </div>
 
-            <div className="min-w-[10rem] flex-1 basis-[min(100%,13rem)] space-y-1">
+            <div className="min-w-[12rem] flex-1 basis-[min(100%,22rem)] space-y-1">
               <Label className="text-xs text-muted-foreground">Categorías</Label>
-              <div className="relative">
+              <div className="relative z-0">
                 <Input
                   ref={catInputRef}
-                  className="h-11 min-h-11 touch-manipulation pr-7 text-xs sm:h-8 sm:min-h-8"
+                  className="h-11 min-h-11 w-full min-w-[12rem] touch-manipulation pr-7 text-xs sm:h-8 sm:min-h-8"
                   placeholder={selectedCategory ? selectedCategory.nombre : "Buscar categoría..."}
                   value={catSearch}
                   onChange={(e) => {
@@ -155,7 +163,7 @@ export function TransactionFiltersBar({
                 )}
                 {catDropdownOpen && (
                   <div
-                    className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover shadow-md"
+                    className="absolute z-[200] mt-1 max-h-48 min-w-full max-w-[min(100vw-2rem,24rem)] overflow-y-auto rounded-md border bg-popover shadow-md"
                     onMouseDown={(e) => e.preventDefault()}
                   >
                     <button
@@ -176,7 +184,7 @@ export function TransactionFiltersBar({
                         <button
                           key={cat.id}
                           type="button"
-                          className="flex min-h-11 w-full touch-manipulation items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
+                          className="flex min-h-11 w-full touch-manipulation items-start gap-2 whitespace-normal break-words px-3 py-2.5 text-left text-xs transition-colors hover:bg-accent sm:min-h-9 sm:py-2"
                           onMouseDown={(e) => {
                             e.preventDefault();
                             setCatSearch("");
@@ -197,7 +205,7 @@ export function TransactionFiltersBar({
                 )}
               </div>
               {selectedCategory && !catSearch && (
-                <p className="truncate text-xs text-primary">{selectedCategory.nombre}</p>
+                <p className="break-words text-xs text-primary">{selectedCategory.nombre}</p>
               )}
             </div>
 
@@ -241,7 +249,7 @@ export function TransactionFiltersBar({
                 />
                 {tagDropdownOpen && (
                   <div
-                    className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border bg-popover shadow-md"
+                    className="absolute z-[200] mt-1 max-h-40 min-w-full max-w-[min(100vw-2rem,24rem)] overflow-y-auto rounded-md border bg-popover shadow-md"
                     onMouseDown={(e) => e.preventDefault()}
                   >
                     {tags
@@ -278,7 +286,7 @@ export function TransactionFiltersBar({
               </div>
             </div>
 
-            <div className="min-w-[10rem] flex-1 basis-[min(100%,12rem)] space-y-1">
+            <div className="min-w-[12rem] flex-1 basis-[min(100%,14rem)] space-y-1">
               <Label className="text-xs text-muted-foreground">Período</Label>
               <Select
                 value={filters.periodo ?? "mes_actual"}
@@ -286,7 +294,7 @@ export function TransactionFiltersBar({
                   onFiltersChange({ ...filters, periodo: v as TransactionPeriod })
                 }
               >
-                <SelectTrigger className="h-11 min-h-11 w-full min-w-0 touch-manipulation text-xs sm:h-8 sm:min-h-8">
+                <SelectTrigger className="h-11 min-h-11 w-full min-w-[12rem] max-w-full touch-manipulation text-xs sm:h-8 sm:min-h-8 [&>span]:line-clamp-2 [&>span]:text-left [&>span]:leading-snug">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
