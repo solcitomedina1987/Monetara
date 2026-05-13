@@ -79,3 +79,14 @@ export async function deactivateTag(id: string) {
   if (error) throw error;
   revalidatePath("/tags");
 }
+
+export async function activateTag(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("tags")
+    .update({ estado: "activo" })
+    .eq("id", id);
+  if (error) throw error;
+  revalidatePath("/tags");
+  revalidatePath("/categories");
+}

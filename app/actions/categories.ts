@@ -65,6 +65,16 @@ export async function deactivateCategory(id: string) {
   revalidatePath("/categories");
 }
 
+export async function activateCategory(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ estado: "activo" })
+    .eq("id", id);
+  if (error) throw error;
+  revalidatePath("/categories");
+}
+
 export async function getCategoryTransactionCount(id: string): Promise<{ ingresos: number; gastos: number }> {
   const supabase = await createClient();
   const oneYearAgo = new Date();

@@ -10,15 +10,16 @@ import {
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   createCategory, updateCategory, deactivateCategory, getCategoryTransactionCount,
+  activateCategory,
 } from "@/app/actions/categories";
 import { toast } from "@/hooks/use-toast";
 import type { Category } from "@/lib/types";
@@ -54,6 +55,7 @@ type FormData = z.infer<typeof schema>;
 export function CategoriesClient({ initialCategories }: { initialCategories: Category[] }) {
   const [categories, setCategories] = useState(initialCategories);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
@@ -76,8 +78,10 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
     resolver: zodResolver(schema),
   });
 
-  const filtered = categories.filter((c) =>
-    c.nombre.toLowerCase().includes(search.toLowerCase())
+  const filtered = categories.filter(
+    (c) =>
+      (showInactive || c.estado === "activo") &&
+      c.nombre.toLowerCase().includes(search.toLowerCase())
   );
 
   const totalIconPages = Math.ceil(ALL_LUCIDE_ICONS.length / iconsPerPage);
@@ -134,12 +138,9 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
   const reactivate = (cat: Category) => {
     startTransition(async () => {
       try {
-        await updateCategory(cat.id, cat.nombre, cat.icono);
-        // Re-fetch via optimistic update
-        const supabase = (await import("@/lib/supabase/client")).createClient();
-        await supabase.from("categories").update({ estado: "activo" }).eq("id", cat.id);
-        setCategories((prev) => prev.map((c) => c.id === cat.id ? { ...c, estado: "activo" as const } : c));
-        toast({ title: "Categoría activada" });
+        await activateCategory(cat.id);
+        setCategories((prev) => prev.map((c) => (c.id === cat.id ? { ...c, estado: "activo" as const } : c)));
+        toast({ title: "Categoría restaurada" });
       } catch (err: any) {
         toast({ variant: "destructive", title: "Error", description: err.message });
       }
@@ -168,7 +169,7 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
         <div>
           <h1 className="text-2xl font-bold">Categorías</h1>
           <p className="text-sm text-muted-foreground">
-            {categories.filter((c) => c.estado === "activo").length} activas
+            {categories.filter((c) => c.estado === "activo").length} de {categories.length}
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -176,21 +177,41 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
         </Button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar categoría..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar categoría..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-2 shrink-0 pb-0.5">
+          <Checkbox
+            id="categories-show-inactive"
+            checked={showInactive}
+            onCheckedChange={(v) => setShowInactive(v === true)}
+          />
+          <Label htmlFor="categories-show-inactive" className="cursor-pointer text-sm font-normal leading-none">
+            Ver inactivas
+          </Label>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <FolderOpen className="h-12 w-12 mb-4 opacity-30" />
-            <p className="text-lg font-medium">No hay categorías</p>
+            <p className="text-lg font-medium">
+              {categories.length === 0
+                ? "No hay categorías"
+                : search.trim()
+                  ? "Ninguna categoría coincide con la búsqueda"
+                  : !showInactive && categories.some((c) => c.estado === "inactivo")
+                    ? "No hay categorías visibles. Marcá «Ver inactivas» para mostrarlas."
+                    : "No hay categorías"}
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -198,22 +219,17 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
           {filtered.map((cat) => (
             <div
               key={cat.id}
-              className={`flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-900 shadow-sm transition-opacity dark:border-stone-200 dark:bg-[#f8f5ef] dark:text-slate-900 ${
-                cat.estado === "inactivo" ? "opacity-50" : ""
+              className={`flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-900 shadow-sm dark:border-stone-200 dark:bg-[#f8f5ef] dark:text-slate-900 ${
+                cat.estado === "inactivo" ? "opacity-60 ring-1 ring-dashed ring-muted-foreground/35" : ""
               }`}
             >
               <span className="text-primary">
                 <DynamicIcon name={cat.icono} className="h-3.5 w-3.5" />
               </span>
               <span className="text-sm font-medium">{cat.nombre}</span>
-              <Badge
-                variant={cat.estado === "activo" ? "success" : "secondary"}
-                className="border border-slate-300/80 bg-white px-1.5 py-0 text-[10px] font-semibold text-slate-900 dark:bg-white/90 dark:text-slate-900"
-              >
-                {cat.estado}
-              </Badge>
               <div className="flex gap-1 ml-1">
                 <button
+                  type="button"
                   onClick={() => openEdit(cat)}
                   className="text-muted-foreground hover:text-foreground transition-colors"
                   title="Editar"
@@ -222,6 +238,7 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
                 </button>
                 {cat.estado === "activo" ? (
                   <button
+                    type="button"
                     onClick={() => openDeactivate(cat)}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                     disabled={isPending}
@@ -231,10 +248,11 @@ export function CategoriesClient({ initialCategories }: { initialCategories: Cat
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => reactivate(cat)}
                     className="text-muted-foreground hover:text-green-600 transition-colors"
                     disabled={isPending}
-                    title="Activar"
+                    title="Restaurar"
                   >
                     <Power className="h-3.5 w-3.5" />
                   </button>
