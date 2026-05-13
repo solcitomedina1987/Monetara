@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,7 @@ import * as LucideIcons from "lucide-react";
 import {
   ArrowUpCircle, ArrowDownCircle, ArrowLeftRight, TrendingUp,
   TrendingDown, Wallet, RefreshCw, Scale, Maximize2, X, FolderOpen,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ export function DashboardClient({
   const router = useRouter();
 
   const [accounts, setAccounts] = useState(initialAccounts);
-  const [accountsWidgetExpanded, setAccountsWidgetExpanded] = useState(false);
+  const accountsCarouselRef = useRef<HTMLDivElement>(null);
 
   const [selectedAccount, setSelectedAccount] = usePersistedState<string>(
     "monetara_dashboard_account",
@@ -243,6 +244,21 @@ export function DashboardClient({
     () => Math.round(accounts.reduce((s, a) => s + Number(a.saldo_actual), 0) * 100) / 100,
     [accounts]
   );
+
+  /** Carrusel: mayor saldo primero, menor al final (orden numérico descendente) */
+  const sortedAccountsForCarousel = useMemo(
+    () => [...accounts].sort((a, b) => Number(b.saldo_actual) - Number(a.saldo_actual)),
+    [accounts]
+  );
+
+  const scrollAccountsCarousel = useCallback((direction: -1 | 1) => {
+    const el = accountsCarouselRef.current;
+    if (!el) return;
+    const card = el.querySelector<HTMLElement>("[data-account-card]");
+    const gap = 12;
+    const step = (card?.getBoundingClientRect().width ?? 260) + gap;
+    el.scrollBy({ left: direction * step, behavior: "smooth" });
+  }, []);
 
   /** Coherente con la suma de saldos del bloque Cuentas cuando se ven todas las cuentas activas */
   const anchorBalance = selectedAccount === "todos" ? sumActiveBalances : totalBalance;
@@ -414,61 +430,70 @@ export function DashboardClient({
         </Link>
       </div>
 
-      {/* Cuentas — vista rápida por cuenta (debajo de acciones rápidas) */}
-      {accounts.length > 0 && (
+      {/* Cuentas — carrusel horizontal, ordenadas por saldo (mayor → menor) */}
+      {sortedAccountsForCarousel.length > 0 && (
         <section className="space-y-2" aria-label="Cuentas">
-          <h2 className="text-sm font-semibold text-muted-foreground">Cuentas</h2>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {(accounts.length > 4 && !accountsWidgetExpanded ? accounts.slice(0, 3) : accounts).map((acc) => (
-              <div
-                key={acc.id}
-                className="rounded-xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/25 p-3 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
-              >
-                <div className="mb-2 flex min-w-0 items-center gap-2">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background/90">
-                    {acc.icon_url ? (
-                      <Image
-                        src={acc.icon_url}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <Wallet className="h-5 w-5 text-muted-foreground" />
-                    )}
-                  </div>
-                  <p className="truncate text-xs font-medium leading-tight">{acc.nombre}</p>
-                </div>
-                <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
-                  {formatCurrency(acc.saldo_actual, acc.moneda)}
-                </p>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-muted-foreground">Cuentas</h2>
+            {sortedAccountsForCarousel.length > 1 && (
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 touch-manipulation"
+                  aria-label="Desplazar cuentas hacia la izquierda"
+                  onClick={() => scrollAccountsCarousel(-1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 touch-manipulation"
+                  aria-label="Desplazar cuentas hacia la derecha"
+                  onClick={() => scrollAccountsCarousel(1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
-            ))}
-            {accounts.length > 4 && !accountsWidgetExpanded && (
-              <button
-                type="button"
-                onClick={() => setAccountsWidgetExpanded(true)}
-                className="flex min-h-[5.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-border/80 bg-muted/20 p-3 text-center transition-colors hover:bg-muted/40"
-              >
-                <span className="text-2xl font-semibold tabular-nums text-muted-foreground">+{accounts.length - 3}</span>
-                <span className="text-[11px] font-medium text-muted-foreground">cuentas</span>
-              </button>
             )}
           </div>
-          {accounts.length > 4 && accountsWidgetExpanded && (
-            <div className="flex justify-center pt-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs text-muted-foreground"
-                onClick={() => setAccountsWidgetExpanded(false)}
-              >
-                Ver menos
-              </Button>
+          <div className="relative -mx-1">
+            <div
+              ref={accountsCarouselRef}
+              className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-1 pt-0.5 [scrollbar-width:thin]"
+            >
+              {sortedAccountsForCarousel.map((acc) => (
+                <div
+                  key={acc.id}
+                  data-account-card
+                  className="snap-start shrink-0 rounded-xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/25 p-3 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06] w-[clamp(240px,78vw,300px)] sm:w-56"
+                >
+                  <div className="mb-2 flex min-w-0 items-center gap-2">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background/90">
+                      {acc.icon_url ? (
+                        <Image
+                          src={acc.icon_url}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Wallet className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="truncate text-xs font-medium leading-tight">{acc.nombre}</p>
+                  </div>
+                  <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
+                    {formatCurrency(acc.saldo_actual, acc.moneda)}
+                  </p>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
         </section>
       )}
 
