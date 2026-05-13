@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { ReactNode, ElementType } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { ReactNode, ElementType, RefObject } from "react";
 import * as LucideIcons from "lucide-react";
 import { Check, FolderOpen, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,47 @@ export interface TransactionFiltersBarProps {
 
 const MAX_VISIBLE_CAT_CHIPS = 2;
 
+const FILTER_DROPDOWN_Z = 10_000;
+
+type MenuPos = { top: number; left: number; width: number };
+
+function clampMenuLeft(left: number, width: number) {
+  const pad = 8;
+  const vw = window.innerWidth;
+  return Math.max(pad, Math.min(left, vw - width - pad));
+}
+
+function useFixedMenuPosition(anchorRef: RefObject<HTMLDivElement | null>, open: boolean) {
+  const [pos, setPos] = useState<MenuPos | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const el = anchorRef.current;
+    if (!el) {
+      setPos(null);
+      return;
+    }
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      const width = Math.min(Math.max(r.width, 200), window.innerWidth - 16);
+      const left = clampMenuLeft(r.left, width);
+      setPos({ top: r.bottom + 4, left, width });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
+  return pos;
+}
+
 export function TransactionFiltersBar({
   filters,
   onFiltersChange,
@@ -61,6 +103,7 @@ export function TransactionFiltersBar({
   footer,
   cardClassName,
 }: TransactionFiltersBarProps) {
+  const [bodyReady, setBodyReady] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
@@ -68,9 +111,16 @@ export function TransactionFiltersBar({
   const [catSearch, setCatSearch] = useState("");
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const catInputRef = useRef<HTMLInputElement>(null);
-
+  const catAnchorRef = useRef<HTMLDivElement>(null);
+  const tagAnchorRef = useRef<HTMLDivElement>(null);
+  const catMenuPos = useFixedMenuPosition(catAnchorRef, catDropdownOpen);
+  const tagMenuPos = useFixedMenuPosition(tagAnchorRef, tagDropdownOpen);
   const catIds = resolvedCategoryIds(filters);
   const tagIds = filters.tag_ids ?? [];
+
+  useEffect(() => {
+    setBodyReady(true);
+  }, []);
 
   useEffect(() => {
     if (catIds.length === 0) setCatSearch("");
@@ -184,7 +234,7 @@ export function TransactionFiltersBar({
                   <span className="text-[11px] text-transparent select-none">.</span>
                 )}
               </div>
-              <div className="relative z-0">
+              <div ref={catAnchorRef} className="relative">
                 <Input
                   ref={catInputRef}
                   className="h-11 min-h-11 w-full min-w-[12rem] touch-manipulation pr-7 text-xs sm:h-8 sm:min-h-8"
@@ -216,9 +266,20 @@ export function TransactionFiltersBar({
                     <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   </button>
                 )}
-                {catDropdownOpen && (
+              </div>
+              {catDropdownOpen &&
+                bodyReady &&
+                catMenuPos &&
+                createPortal(
                   <div
-                    className="absolute left-0 right-0 z-[500] mt-1 max-h-48 overflow-y-auto rounded-md border bg-popover shadow-lg md:left-0 md:right-auto md:min-w-full md:max-w-[min(100vw-2rem,24rem)]"
+                    className="max-h-[min(12rem,50vh)] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-lg"
+                    style={{
+                      position: "fixed",
+                      top: catMenuPos.top,
+                      left: catMenuPos.left,
+                      width: catMenuPos.width,
+                      zIndex: FILTER_DROPDOWN_Z,
+                    }}
                     onMouseDown={(e) => e.preventDefault()}
                   >
                     <button
@@ -260,9 +321,9 @@ export function TransactionFiltersBar({
                     ).length === 0 && (
                       <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
                     )}
-                  </div>
+                  </div>,
+                  document.body
                 )}
-              </div>
             </div>
 
             {/* Etiquetas */}
@@ -294,7 +355,7 @@ export function TransactionFiltersBar({
                   <span className="text-[11px] text-transparent select-none">.</span>
                 )}
               </div>
-              <div className="relative z-0">
+              <div ref={tagAnchorRef} className="relative">
                 <Input
                   ref={tagInputRef}
                   className="h-11 min-h-11 touch-manipulation pr-7 text-xs sm:h-8 sm:min-h-8"
@@ -324,9 +385,20 @@ export function TransactionFiltersBar({
                     <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                   </button>
                 )}
-                {tagDropdownOpen && (
+              </div>
+              {tagDropdownOpen &&
+                bodyReady &&
+                tagMenuPos &&
+                createPortal(
                   <div
-                    className="absolute left-0 right-0 z-[400] mt-1 max-h-40 overflow-y-auto rounded-md border bg-popover shadow-lg md:left-0 md:right-auto md:min-w-full md:max-w-[min(100vw-2rem,24rem)]"
+                    className="max-h-[min(10rem,50vh)] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-lg"
+                    style={{
+                      position: "fixed",
+                      top: tagMenuPos.top,
+                      left: tagMenuPos.left,
+                      width: tagMenuPos.width,
+                      zIndex: FILTER_DROPDOWN_Z,
+                    }}
                     onMouseDown={(e) => e.preventDefault()}
                   >
                     {tags
@@ -357,9 +429,9 @@ export function TransactionFiltersBar({
                     ).length === 0 && (
                       <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
                     )}
-                  </div>
+                  </div>,
+                  document.body
                 )}
-              </div>
             </div>
 
             {/* Período */}
