@@ -29,6 +29,7 @@ import {
   type RunningBalanceScope,
 } from "@/lib/transaction-balance";
 import { usePersistedState } from "@/lib/hooks/use-persisted-state";
+import { getActiveAccountsWithBalance } from "@/app/actions/accounts";
 import { getDashboardStats, getExpensesByCategory, getExpensesByTag, getTransactions, getTotalBalance } from "@/app/actions/transactions";
 import {
   groupSmallSlices,
@@ -36,7 +37,7 @@ import {
   type ExpenseEntry,
   type TagExpenseEntry,
 } from "@/lib/expense-chart-grouping";
-import type { Account, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
+import type { AccountWithBalance, TransactionWithRelations, DashboardPeriod, TransactionFilters } from "@/lib/types";
 
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3 w-3";
@@ -73,7 +74,7 @@ function getDefaultCustomDates() {
 type TagEntry = TagExpenseEntry;
 
 interface DashboardClientProps {
-  accounts: Account[];
+  accounts: AccountWithBalance[];
   initialStats: { ingresos: number; gastos: number; balance: number };
   initialExpensesByCategory: ExpenseEntry[];
   initialTransactions: TransactionWithRelations[];
@@ -82,7 +83,7 @@ interface DashboardClientProps {
 }
 
 export function DashboardClient({
-  accounts,
+  accounts: initialAccounts,
   initialStats,
   initialExpensesByCategory,
   initialTransactions,
@@ -90,6 +91,9 @@ export function DashboardClient({
   defaultAccountId,
 }: DashboardClientProps) {
   const router = useRouter();
+
+  const [accounts, setAccounts] = useState(initialAccounts);
+  const [accountsWidgetExpanded, setAccountsWidgetExpanded] = useState(false);
 
   const [selectedAccount, setSelectedAccount] = usePersistedState<string>(
     "monetara_dashboard_account",
@@ -138,22 +142,28 @@ export function DashboardClient({
     const filters = buildFilters(account, per, dates);
     const accountId = account === "todos" ? undefined : account;
     try {
-      const [newStats, newExpenses, newTagExpenses, newTx, newTotal] = await Promise.all([
+      const [newStats, newExpenses, newTagExpenses, newTx, newTotal, refreshedAccounts] = await Promise.all([
         getDashboardStats(filters),
         getExpensesByCategory(filters),
         getExpensesByTag(filters),
         getTransactions(filters),
         getTotalBalance(accountId),
+        getActiveAccountsWithBalance(),
       ]);
       setStats(newStats);
       setExpenses(newExpenses);
       setExpensesByTag(newTagExpenses);
       setTransactions(newTx);
       setTotalBalance(newTotal);
+      setAccounts(refreshedAccounts);
     } finally {
       setLoading(false);
     }
   }, [selectedAccount, periodo, customDates, buildFilters]);
+
+  useEffect(() => {
+    setAccounts(initialAccounts);
+  }, [initialAccounts]);
 
   useEffect(() => {
     refresh(selectedAccount, periodo, customDates);
@@ -229,10 +239,18 @@ export function DashboardClient({
     [selectedAccount, accounts]
   );
 
-  // Saldo por día anclado al RPC del widget: totalBalance − Σ(deltas listados) + deltas acumulados
+  const sumActiveBalances = useMemo(
+    () => Math.round(accounts.reduce((s, a) => s + Number(a.saldo_actual), 0) * 100) / 100,
+    [accounts]
+  );
+
+  /** Coherente con la suma de saldos del bloque Cuentas cuando se ven todas las cuentas activas */
+  const anchorBalance = selectedAccount === "todos" ? sumActiveBalances : totalBalance;
+
+  // Saldo por día anclado al mismo valor que el widget Saldo Real
   const dayEndBalance = useMemo(() => {
     const sumD = sumBalanceDeltasForScope(transactions, runningScope);
-    let running = Math.round((totalBalance - sumD) * 100) / 100;
+    let running = Math.round((anchorBalance - sumD) * 100) / 100;
     const result: Record<string, number> = {};
     const ascending = [...sortedDays].reverse();
     for (const day of ascending) {
@@ -243,7 +261,7 @@ export function DashboardClient({
       result[day] = running;
     }
     return result;
-  }, [transactions, sortedDays, byDay, totalBalance, runningScope]);
+  }, [transactions, sortedDays, byDay, anchorBalance, runningScope]);
 
   const selectedAccountData = accounts.find((a) => a.id === selectedAccount);
   const currency = selectedAccountData?.moneda ?? "ARS";
@@ -396,6 +414,64 @@ export function DashboardClient({
         </Link>
       </div>
 
+      {/* Cuentas — vista rápida por cuenta (debajo de acciones rápidas) */}
+      {accounts.length > 0 && (
+        <section className="space-y-2" aria-label="Cuentas">
+          <h2 className="text-sm font-semibold text-muted-foreground">Cuentas</h2>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {(accounts.length > 4 && !accountsWidgetExpanded ? accounts.slice(0, 3) : accounts).map((acc) => (
+              <div
+                key={acc.id}
+                className="rounded-xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/25 p-3 shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
+              >
+                <div className="mb-2 flex min-w-0 items-center gap-2">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/80 bg-background/90">
+                    {acc.icon_url ? (
+                      <Image
+                        src={acc.icon_url}
+                        alt=""
+                        width={40}
+                        height={40}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Wallet className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <p className="truncate text-xs font-medium leading-tight">{acc.nombre}</p>
+                </div>
+                <p className="text-base font-bold tabular-nums tracking-tight text-foreground">
+                  {formatCurrency(acc.saldo_actual, acc.moneda)}
+                </p>
+              </div>
+            ))}
+            {accounts.length > 4 && !accountsWidgetExpanded && (
+              <button
+                type="button"
+                onClick={() => setAccountsWidgetExpanded(true)}
+                className="flex min-h-[5.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-border/80 bg-muted/20 p-3 text-center transition-colors hover:bg-muted/40"
+              >
+                <span className="text-2xl font-semibold tabular-nums text-muted-foreground">+{accounts.length - 3}</span>
+                <span className="text-[11px] font-medium text-muted-foreground">cuentas</span>
+              </button>
+            )}
+          </div>
+          {accounts.length > 4 && accountsWidgetExpanded && (
+            <div className="flex justify-center pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs text-muted-foreground"
+                onClick={() => setAccountsWidgetExpanded(false)}
+              >
+                Ver menos
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Stats cards — 2×2 on mobile, 4-column on desktop */}
       <div className="grid gap-2 grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -455,8 +531,8 @@ export function DashboardClient({
           </CardHeader>
           <CardContent className="px-3 pb-3">
             {loading ? <Skeleton className="h-6 w-20" /> : (
-              <p className={`text-base sm:text-xl font-bold leading-tight tabular-nums ${totalBalance >= 0 ? "text-primary" : "text-red-600 dark:text-red-400"}`}>
-                {formatCurrency(totalBalance, currency)}
+              <p className={`text-base sm:text-xl font-bold leading-tight tabular-nums ${anchorBalance >= 0 ? "text-primary" : "text-red-600 dark:text-red-400"}`}>
+                {formatCurrency(anchorBalance, currency)}
               </p>
             )}
             <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight truncate">

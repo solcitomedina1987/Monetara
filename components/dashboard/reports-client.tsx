@@ -47,6 +47,7 @@ import {
   DEFAULT_TRANSACTION_FILTERS,
   normalizeStoredTransactionFilters,
   persistTransactionFilters,
+  resolvedCategoryIds,
 } from "@/lib/transaction-filters";
 import { TransactionFiltersBar } from "@/components/transactions/transaction-filters-bar";
 import type {
@@ -235,15 +236,20 @@ export function ReportsClient({
   const displayCurrency =
     accounts.find((a) => a.id === filters.account_id)?.moneda ?? "ARS";
 
-  const selectedCategory = categories.find((c) => c.id === filters.category_id);
+  const categoryFilterIds = useMemo(() => resolvedCategoryIds(filters), [filters]);
+  const singleCategoryName =
+    categoryFilterIds.length === 1
+      ? categories.find((c) => c.id === categoryFilterIds[0])?.nombre
+      : null;
 
   const barData = useMemo(() => {
     const daily: Record<string, { ingresos: number; gastos: number }> = {};
-    const singleCategory = Boolean(filters.category_id);
+    const restrictCats = categoryFilterIds.length > 0;
+    const catSet = new Set(categoryFilterIds);
 
     for (const t of transactions) {
       if (t.tipo === "transferencia") continue;
-      if (singleCategory && t.category_id !== filters.category_id) continue;
+      if (restrictCats && (!t.category_id || !catSet.has(t.category_id))) continue;
 
       if (!daily[t.fecha]) daily[t.fecha] = { ingresos: 0, gastos: 0 };
       if (t.tipo === "ingreso" && showIngresos) {
@@ -260,7 +266,7 @@ export function ReportsClient({
         fecha: format(parseISO(`${fecha}T12:00:00`), "dd/MM"),
         ...data,
       }));
-  }, [transactions, filters.category_id, showIngresos, showGastos]);
+  }, [transactions, categoryFilterIds, showIngresos, showGastos]);
 
   const monthlyData = useMemo(() => {
     let { from, to } = chartBoundsFromFilters(filters, transactions);
@@ -602,9 +608,11 @@ export function ReportsClient({
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
-                {filters.category_id && selectedCategory
-                  ? `Actividad por día — ${selectedCategory.nombre}`
-                  : "Ingresos vs gastos por día"}
+                {categoryFilterIds.length === 1 && singleCategoryName
+                  ? `Actividad por día — ${singleCategoryName}`
+                  : categoryFilterIds.length > 1
+                    ? `Actividad por día — ${categoryFilterIds.length} categorías`
+                    : "Ingresos vs gastos por día"}
               </CardTitle>
             </CardHeader>
             <CardContent>

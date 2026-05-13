@@ -117,7 +117,10 @@ export interface TransactionFilters {
   fechaDesde?: string;
   fechaHasta?: string;
   account_id?: string;
+  /** @deprecated Prefer `category_ids`; se mantiene por URLs y datos guardados antiguos. */
   category_id?: string;
+  /** Varias categorías: la lista muestra movimientos en cualquiera (OR). */
+  category_ids?: string[];
   tag_ids?: string[];
   /** Checkbox ingresos (live filter). Si ambos con gastos están activos, no se filtra por tipo. */
   showIngresos?: boolean;

@@ -112,13 +112,13 @@ export function TagsClient({ initialTags }: { initialTags: TagType[] }) {
           {filtered.map((tag) => (
             <div
               key={tag.id}
-              className={`flex items-center gap-2 rounded-full border bg-white dark:bg-card px-4 py-2 transition-opacity ${
+              className={`flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-900 shadow-sm transition-opacity dark:border-stone-200 dark:bg-[#f8f5ef] dark:text-slate-900 ${
                 tag.estado === "inactivo" ? "opacity-50" : ""
               }`}
             >
-              <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+              <Tag className="h-3.5 w-3.5 text-slate-600 dark:text-slate-700" />
               <span className="text-sm font-medium">{tag.nombre}</span>
-              <Badge variant={tag.estado === "activo" ? "success" : "secondary"} className="text-xs px-1.5 py-0">
+              <Badge variant={tag.estado === "activo" ? "success" : "secondary"} className="border border-slate-300/80 bg-white px-1.5 py-0 text-[10px] font-semibold text-slate-900 dark:bg-white/90 dark:text-slate-900">
                 {tag.estado}
               </Badge>
               <div className="flex gap-1 ml-1">

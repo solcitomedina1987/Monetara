@@ -77,6 +77,15 @@ export async function getAccountBalance(accountId: string): Promise<number> {
   return data ?? 0;
 }
 
+export async function getActiveAccountsWithBalance(): Promise<AccountWithBalance[]> {
+  const accounts = await getActiveAccounts();
+  const balances = await Promise.all(accounts.map((a) => getAccountBalance(a.id)));
+  return accounts.map((a, i) => ({
+    ...a,
+    saldo_actual: Math.round(Number(balances[i] ?? 0) * 100) / 100,
+  }));
+}
+
 export async function getAccountsWithBalance(): Promise<AccountWithBalance[]> {
   const accounts = await getAccounts();
   const balances = await Promise.all(accounts.map((a) => getAccountBalance(a.id)));

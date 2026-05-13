@@ -20,6 +20,13 @@ export const VALID_TRANSACTION_PERIODS = new Set<string>([
   "desde_el_inicio",
 ]);
 
+/** IDs de categoría aplicados al filtro (multi o legado `category_id`). */
+export function resolvedCategoryIds(f: TransactionFilters): string[] {
+  if (f.category_ids?.length) return f.category_ids;
+  if (f.category_id) return [f.category_id];
+  return [];
+}
+
 export function normalizeStoredTransactionFilters(raw: unknown): TransactionFilters {
   const out: TransactionFilters = { ...DEFAULT_TRANSACTION_FILTERS };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
@@ -31,7 +38,13 @@ export function normalizeStoredTransactionFilters(raw: unknown): TransactionFilt
   if (typeof o.fechaDesde === "string") out.fechaDesde = o.fechaDesde;
   if (typeof o.fechaHasta === "string") out.fechaHasta = o.fechaHasta;
   if (typeof o.account_id === "string") out.account_id = o.account_id;
-  if (typeof o.category_id === "string") out.category_id = o.category_id;
+  if (Array.isArray(o.category_ids)) {
+    out.category_ids = o.category_ids.filter((id): id is string => typeof id === "string");
+    if (out.category_ids.length === 0) delete out.category_ids;
+  }
+  if (typeof o.category_id === "string" && o.category_id && !out.category_ids?.length) {
+    out.category_ids = [o.category_id];
+  }
   if (Array.isArray(o.tag_ids)) {
     out.tag_ids = o.tag_ids.filter((id): id is string => typeof id === "string");
   }
@@ -58,7 +71,7 @@ export function normalizeStoredTransactionFilters(raw: unknown): TransactionFilt
 
 export function persistTransactionFilters(f: TransactionFilters) {
   try {
-    const { tipo: _omit, ...rest } = f;
+    const { tipo: _omit, category_id: _legacy, ...rest } = f;
     localStorage.setItem(TX_FILTER_KEY, JSON.stringify(rest));
   } catch {
     /* ignore */

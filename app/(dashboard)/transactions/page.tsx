@@ -10,6 +10,8 @@ interface Props {
     periodo?: string;
     account_id?: string;
     category_id?: string;
+    /** Varias categorías separadas por coma */
+    category_ids?: string;
     fechaDesde?: string;
     fechaHasta?: string;
   }>;
@@ -22,16 +24,23 @@ export default async function TransactionsPage({ searchParams }: Props) {
     params.periodo !== undefined ||
     params.account_id !== undefined ||
     params.category_id !== undefined ||
+    params.category_ids !== undefined ||
     params.fechaDesde !== undefined ||
     params.fechaHasta !== undefined;
 
   const periodo = (params.periodo as TransactionPeriod) ?? "mes_actual";
+  const categoryIdsFromUrl = params.category_ids
+    ? params.category_ids.split(",").map((s) => s.trim()).filter(Boolean)
+    : params.category_id
+      ? [params.category_id]
+      : undefined;
+
   const filtersForFetch: TransactionFilters = {
     periodo,
     showIngresos: true,
     showGastos: true,
     account_id: params.account_id ?? undefined,
-    category_id: params.category_id ?? undefined,
+    ...(categoryIdsFromUrl?.length ? { category_ids: categoryIdsFromUrl } : {}),
     ...(periodo === "personalizado" && params.fechaDesde && params.fechaHasta
       ? { fechaDesde: params.fechaDesde, fechaHasta: params.fechaHasta }
       : {}),

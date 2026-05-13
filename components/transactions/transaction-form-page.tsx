@@ -151,13 +151,19 @@ export function TransactionFormPage({
     try {
       const stored = localStorage.getItem("monetara_tx_filters");
       if (!stored) return "/transactions";
-      const f = JSON.parse(stored) as Record<string, string | undefined>;
+      const f = JSON.parse(stored) as Record<string, unknown>;
       const params = new URLSearchParams();
-      if (f.periodo && f.periodo !== "mes_actual") params.set("periodo", f.periodo);
-      if (f.account_id)  params.set("account_id",  f.account_id);
-      if (f.category_id) params.set("category_id", f.category_id);
-      if (f.fechaDesde)  params.set("fechaDesde",  f.fechaDesde);
-      if (f.fechaHasta)  params.set("fechaHasta",  f.fechaHasta);
+      if (typeof f.periodo === "string" && f.periodo !== "mes_actual") params.set("periodo", f.periodo);
+      if (typeof f.account_id === "string") params.set("account_id", f.account_id);
+      const catArr = Array.isArray(f.category_ids)
+        ? (f.category_ids as unknown[]).filter((id): id is string => typeof id === "string")
+        : typeof f.category_id === "string" && f.category_id
+          ? [f.category_id]
+          : [];
+      if (catArr.length === 1) params.set("category_id", catArr[0]);
+      else if (catArr.length > 1) params.set("category_ids", catArr.join(","));
+      if (typeof f.fechaDesde === "string") params.set("fechaDesde", f.fechaDesde);
+      if (typeof f.fechaHasta === "string") params.set("fechaHasta", f.fechaHasta);
       const qs = params.toString();
       return qs ? `/transactions?${qs}` : "/transactions";
     } catch {

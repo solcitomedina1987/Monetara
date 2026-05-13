@@ -48,8 +48,16 @@ export async function getTransactions(filters?: TransactionFilters): Promise<Tra
     query = query.or(`account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`);
   }
 
-  if (filters?.category_id) {
-    query = query.eq("category_id", filters.category_id);
+  const categoryIds =
+    filters?.category_ids && filters.category_ids.length > 0
+      ? filters.category_ids
+      : filters?.category_id
+        ? [filters.category_id]
+        : null;
+  if (categoryIds && categoryIds.length === 1) {
+    query = query.eq("category_id", categoryIds[0]);
+  } else if (categoryIds && categoryIds.length > 1) {
+    query = query.in("category_id", categoryIds);
   }
 
   const dates = getPeriodDates(filters);
