@@ -1,8 +1,9 @@
 import type { CellInput } from "jspdf-autotable";
-import { format, parseISO, startOfMonth, endOfMonth, subMonths, startOfYear } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import type { TransactionWithRelations, TransactionFilters, TransactionPeriod } from "@/lib/types";
 import { CURRENCIES } from "@/lib/types";
+import { getPeriodDates } from "@/lib/transaction-period";
 
 function formatAmount(monto: number, tipo: string): string {
   const sign = tipo === "ingreso" ? "+" : tipo === "gasto" ? "-" : "";
@@ -84,33 +85,12 @@ function currencySymbolForCode(code: string): string {
 
 /** Misma lógica que en server actions (solo fechas; usable en cliente). */
 function getExportPeriodRange(filters?: TransactionFilters): [string, string] | null {
-  const now = new Date();
-  const periodo = filters?.periodo ?? "mes_actual";
-  if (periodo === "desde_el_inicio") return null;
-
-  if (periodo === "mes_actual") {
-    return [format(startOfMonth(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
-  }
-  if (periodo === "mes_anterior") {
-    const last = subMonths(now, 1);
-    return [format(startOfMonth(last), "yyyy-MM-dd"), format(endOfMonth(last), "yyyy-MM-dd")];
-  }
-  if (periodo === "ultimos_3_meses") {
-    return [format(startOfMonth(subMonths(now, 2)), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
-  }
-  if (periodo === "año_actual") {
-    return [format(startOfYear(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
-  }
-  if (periodo === "ultimo_año") {
-    return [format(subMonths(now, 12), "yyyy-MM-dd"), format(now, "yyyy-MM-dd")];
-  }
-  if (periodo === "personalizado" && filters?.fechaDesde && filters?.fechaHasta) {
-    return [filters.fechaDesde, filters.fechaHasta];
-  }
-  return null;
+  return getPeriodDates(filters);
 }
 
 const PERIOD_LABELS: Record<TransactionPeriod, string> = {
+  hoy: "Hoy",
+  ultimos_7_dias: "Últimos 7 días",
   mes_actual: "Mes actual",
   mes_anterior: "Mes anterior",
   ultimos_3_meses: "Últimos 3 meses",

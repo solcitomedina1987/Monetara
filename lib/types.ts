@@ -105,7 +105,11 @@ export type DashboardPeriod =
   | "personalizado";
 
 /** Períodos disponibles en Movimientos (incluye histórico completo). */
-export type TransactionPeriod = DashboardPeriod | "desde_el_inicio";
+export type TransactionPeriod =
+  | DashboardPeriod
+  | "desde_el_inicio"
+  | "hoy"
+  | "ultimos_7_dias";
 
 export interface TransactionFilters {
   tipo?: TransactionType | "todos";

@@ -4,35 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Transaction, TransactionWithRelations, TransactionFilters } from "@/lib/types";
 import { balanceDeltaForTransaction } from "@/lib/transaction-balance";
-import { startOfMonth, endOfMonth, subMonths, startOfYear, format } from "date-fns";
-
-/** Returns [fechaDesde, fechaHasta] for the given filter period. `null` = sin filtro de fechas. */
-function getPeriodDates(filters?: TransactionFilters): [string, string] | null {
-  const now = new Date();
-  if (filters?.periodo === "desde_el_inicio") {
-    return null;
-  }
-  if (!filters?.periodo || filters.periodo === "mes_actual") {
-    return [format(startOfMonth(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
-  }
-  if (filters.periodo === "mes_anterior") {
-    const last = subMonths(now, 1);
-    return [format(startOfMonth(last), "yyyy-MM-dd"), format(endOfMonth(last), "yyyy-MM-dd")];
-  }
-  if (filters.periodo === "ultimos_3_meses") {
-    return [format(startOfMonth(subMonths(now, 2)), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
-  }
-  if (filters.periodo === "año_actual") {
-    return [format(startOfYear(now), "yyyy-MM-dd"), format(endOfMonth(now), "yyyy-MM-dd")];
-  }
-  if (filters.periodo === "ultimo_año") {
-    return [format(subMonths(now, 12), "yyyy-MM-dd"), format(now, "yyyy-MM-dd")];
-  }
-  if (filters.periodo === "personalizado" && filters.fechaDesde && filters.fechaHasta) {
-    return [filters.fechaDesde, filters.fechaHasta];
-  }
-  return null;
-}
+import { format } from "date-fns";
+import { getPeriodDates } from "@/lib/transaction-period";
 
 export async function getTransactions(filters?: TransactionFilters): Promise<TransactionWithRelations[]> {
   const supabase = await createClient();
