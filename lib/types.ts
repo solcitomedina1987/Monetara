@@ -139,3 +139,23 @@ export interface DailySummary {
   total_gastos: number;
   saldo_dia: number;
 }
+
+export interface BudgetCategory {
+  id: string;
+  user_id: string;
+  name: string;
+  icon: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Budget {
+  id: string;
+  user_id: string;
+  budget_category_id: string;
+  amount: number;
+  month: number;
+  year: number;
+  created_at: string;
+  updated_at: string;
+}
