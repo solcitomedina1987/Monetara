@@ -274,6 +274,7 @@ CREATE TABLE IF NOT EXISTS budget_categories (
   user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   icon        TEXT,
+  percentage  NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (percentage >= 0 AND percentage <= 100),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, name)
@@ -310,3 +311,6 @@ CREATE INDEX IF NOT EXISTS idx_budgets_category_id ON budgets(budget_category_id
 
 CREATE TRIGGER set_budget_categories_updated_at BEFORE UPDATE ON budget_categories FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER set_budgets_updated_at BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS budget_category_id UUID REFERENCES budget_categories(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_categories_budget_category_id ON categories(budget_category_id);

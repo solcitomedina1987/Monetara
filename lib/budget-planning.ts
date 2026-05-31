@@ -1,8 +1,7 @@
-/** Mes/año de planificación por defecto: el mes siguiente al actual */
+/** Mes de planificación por defecto: mes actual (ingresos y gastos del mismo período) */
 export function getDefaultPlanningPeriod(): { month: number; year: number } {
   const now = new Date();
-  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  return { month: next.getMonth() + 1, year: next.getFullYear() };
+  return { month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
 export function shiftPlanningPeriod(

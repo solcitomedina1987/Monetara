@@ -1,18 +1,15 @@
-import { getBudgetCategories, getBudgetsForMonth } from "@/app/actions/budgets";
+import { getBudgetsPageData } from "@/app/actions/budgets";
 import { BudgetsClient } from "@/components/budgets/budgets-client";
 import { getDefaultPlanningPeriod } from "@/lib/budget-planning";
 
 export default async function BudgetsPage() {
   const { month, year } = getDefaultPlanningPeriod();
-  const [categories, budgets] = await Promise.all([
-    getBudgetCategories(),
-    getBudgetsForMonth(month, year),
-  ]);
+  const { summary, expenseCategories } = await getBudgetsPageData(month, year);
 
   return (
     <BudgetsClient
-      initialCategories={categories}
-      initialBudgets={budgets}
+      initialSummary={summary}
+      expenseCategories={expenseCategories}
       initialMonth={month}
       initialYear={year}
     />

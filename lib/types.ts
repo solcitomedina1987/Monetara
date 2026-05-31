@@ -35,6 +35,7 @@ export interface Category {
   nombre: string;
   icono: string | null;
   estado: CategoryStatus;
+  budget_category_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -145,10 +146,36 @@ export interface BudgetCategory {
   user_id: string;
   name: string;
   icon: string | null;
+  percentage: number;
   created_at: string;
   updated_at: string;
 }
 
+export interface BudgetCategoryLinkedExpense {
+  id: string;
+  nombre: string;
+}
+
+export interface BudgetCategoryMonthRow {
+  id: string;
+  name: string;
+  icon: string | null;
+  percentage: number;
+  created_at: string;
+  limitAmount: number;
+  spentAmount: number;
+  linkedCategories: BudgetCategoryLinkedExpense[];
+}
+
+export interface BudgetMonthSummary {
+  month: number;
+  year: number;
+  totalIncome: number;
+  totalAssignedPercent: number;
+  categories: BudgetCategoryMonthRow[];
+}
+
+/** @deprecated Presupuestos fijos por mes; reemplazado por porcentaje sobre ingresos */
 export interface Budget {
   id: string;
   user_id: string;
