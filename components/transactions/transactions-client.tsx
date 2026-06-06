@@ -44,7 +44,15 @@ import {
   DEFAULT_TRANSACTION_FILTERS,
   normalizeStoredTransactionFilters,
   persistTransactionFilters,
+  resolvedAccountIds,
 } from "@/lib/transaction-filters";
+
+function totalBalanceArg(filters: TransactionFilters): string | string[] | undefined {
+  const ids = resolvedAccountIds(filters);
+  if (ids.length === 1) return ids[0];
+  if (ids.length > 1) return ids;
+  return undefined;
+}
 
 function DynamicCategoryIcon({ iconName, className }: { iconName: string | null | undefined; className?: string }) {
   const cls = className ?? "h-3.5 w-3.5";
@@ -117,7 +125,7 @@ export function TransactionsClient({
     try {
       const [data, newRef] = await Promise.all([
         getTransactions(newFilters),
-        getTotalBalance(newFilters.account_id),
+        getTotalBalance(totalBalanceArg(newFilters)),
       ]);
       setTransactions(data);
       setFilters(newFilters);
@@ -156,7 +164,7 @@ export function TransactionsClient({
       try {
         await deleteTransaction(id);
         setTransactions((prev) => prev.filter((t) => t.id !== id));
-        const newTotal = await getTotalBalance(filters.account_id);
+        const newTotal = await getTotalBalance(totalBalanceArg(filters));
         setReferenceTotalBalance(newTotal);
         setDeleteId(null);
         toast({ title: "Movimiento eliminado" });
@@ -218,17 +226,26 @@ export function TransactionsClient({
     return { byDay: acc, sortedDays: sorted };
   }, [transactions]);
 
-  const selectedAccountId = filters.account_id;
+  const accountFilterIds = resolvedAccountIds(filters);
   const runningScope = useMemo<RunningBalanceScope>(
     () =>
-      selectedAccountId
-        ? { kind: "one", accountId: selectedAccountId }
-        : { kind: "many", accountIds: new Set(accounts.map((a) => a.id)) },
-    [selectedAccountId, accounts]
+      accountFilterIds.length === 1
+        ? { kind: "one", accountId: accountFilterIds[0] }
+        : {
+            kind: "many",
+            accountIds: new Set(
+              accountFilterIds.length > 0
+                ? accountFilterIds
+                : accounts.map((a) => a.id)
+            ),
+          },
+    [accountFilterIds, accounts]
   );
 
   const listDisplayCurrency =
-    accounts.find((a) => a.id === filters.account_id)?.moneda ?? "ARS";
+    accountFilterIds.length === 1
+      ? accounts.find((a) => a.id === accountFilterIds[0])?.moneda ?? "ARS"
+      : "ARS";
 
   const dayEndBalance = useMemo(() => {
     const sumD = sumBalanceDeltasForScope(transactions, runningScope);
@@ -247,17 +264,15 @@ export function TransactionsClient({
   }, [transactions, referenceTotalBalance, runningScope, sortedDays, byDay]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Movimientos</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-4 pb-24 md:space-y-6 md:pb-0">
+      {/* Header — acciones visibles solo en desktop; móvil usa barra flotante */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold">Movimientos</h1>
+        <div className="hidden flex-wrap items-center gap-2 md:flex">
           <Link href="/transactions/new?tipo=ingreso">
             <Button
               size="sm"
-              className="min-h-11 touch-manipulation gap-1.5 bg-green-600 px-3 text-xs text-white hover:bg-green-700 sm:min-h-8"
+              className="min-h-8 gap-1.5 bg-green-600 px-3 text-xs text-white hover:bg-green-700"
             >
               <ArrowUpCircle className="h-3.5 w-3.5" />
               Ingreso
@@ -266,7 +281,7 @@ export function TransactionsClient({
           <Link href="/transactions/new?tipo=gasto">
             <Button
               size="sm"
-              className="min-h-11 touch-manipulation gap-1.5 bg-red-600 px-3 text-xs text-white hover:bg-red-700 sm:min-h-8"
+              className="min-h-8 gap-1.5 bg-red-600 px-3 text-xs text-white hover:bg-red-700"
             >
               <ArrowDownCircle className="h-3.5 w-3.5" />
               Gasto
@@ -275,7 +290,7 @@ export function TransactionsClient({
           <Link href="/transactions/new?tipo=transferencia">
             <Button
               size="sm"
-              className="min-h-11 touch-manipulation gap-1.5 bg-[#0e415f] px-3 text-xs text-white hover:bg-[#1f628e] dark:bg-[#f4f0e0] dark:text-[#0e415f] dark:hover:bg-[#e8e4d4] sm:min-h-8"
+              className="min-h-8 gap-1.5 bg-[#0e415f] px-3 text-xs text-white hover:bg-[#1f628e] dark:bg-[#f4f0e0] dark:text-[#0e415f] dark:hover:bg-[#e8e4d4]"
             >
               <ArrowLeftRight className="h-3.5 w-3.5" />
               Transferencia
@@ -284,7 +299,30 @@ export function TransactionsClient({
         </div>
       </div>
 
-      {/* Filtros + import/export */}
+      {/* Barra flotante móvil — acciones rápidas siempre accesibles */}
+      <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 gap-2 rounded-full border border-border/80 bg-background/95 p-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden">
+        <Link href="/transactions/new?tipo=ingreso">
+          <Button size="sm" className="h-9 rounded-full bg-green-600 px-3 text-xs text-white hover:bg-green-700">
+            <ArrowUpCircle className="mr-1 h-3.5 w-3.5" />
+            Ingreso
+          </Button>
+        </Link>
+        <Link href="/transactions/new?tipo=gasto">
+          <Button size="sm" className="h-9 rounded-full bg-red-600 px-3 text-xs text-white hover:bg-red-700">
+            <ArrowDownCircle className="mr-1 h-3.5 w-3.5" />
+            Gasto
+          </Button>
+        </Link>
+        <Link href="/transactions/new?tipo=transferencia">
+          <Button
+            size="sm"
+            className="h-9 rounded-full bg-[#0e415f] px-3 text-xs text-white dark:bg-[#f4f0e0] dark:text-[#0e415f]"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" />
+          </Button>
+        </Link>
+      </div>
+
       <TransactionFiltersBar
         filters={filters}
         onFiltersChange={applyFilters}
@@ -293,28 +331,6 @@ export function TransactionsClient({
         categories={categories}
         tags={tags}
         idPrefix="filtro"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11 touch-manipulation sm:h-8"
-              onClick={() => setImportOpen(true)}
-            >
-              <Download className="mr-1.5 h-4 w-4 rotate-180" />
-              Importar
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11 touch-manipulation sm:h-8"
-              onClick={openExportDialog}
-            >
-              <Download className="mr-1.5 h-4 w-4" />
-              Exportar
-            </Button>
-          </>
-        }
       />
 
       {/* Transaction list */}
@@ -450,6 +466,28 @@ export function TransactionsClient({
           })}
         </div>
       )}
+
+      {/* Importar / Exportar — al final de la lista */}
+      <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border/60 pt-6 pb-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 touch-manipulation text-xs"
+          onClick={() => setImportOpen(true)}
+        >
+          <Download className="mr-1.5 h-3.5 w-3.5 rotate-180" />
+          Importar
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 touch-manipulation text-xs"
+          onClick={openExportDialog}
+        >
+          <Download className="mr-1.5 h-3.5 w-3.5" />
+          Exportar
+        </Button>
+      </div>
 
       {/* Import dialog */}
       <ImportTransactionsDialog

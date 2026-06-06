@@ -118,6 +118,8 @@ export interface TransactionFilters {
   fechaDesde?: string;
   fechaHasta?: string;
   account_id?: string;
+  /** Varias cuentas: la lista muestra movimientos en cualquiera (OR). */
+  account_ids?: string[];
   /** @deprecated Prefer `category_ids`; se mantiene por URLs y datos guardados antiguos. */
   category_id?: string;
   /** Varias categorías: la lista muestra movimientos en cualquiera (OR). */

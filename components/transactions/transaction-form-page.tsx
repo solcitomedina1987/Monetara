@@ -154,7 +154,13 @@ export function TransactionFormPage({
       const f = JSON.parse(stored) as Record<string, unknown>;
       const params = new URLSearchParams();
       if (typeof f.periodo === "string" && f.periodo !== "mes_actual") params.set("periodo", f.periodo);
-      if (typeof f.account_id === "string") params.set("account_id", f.account_id);
+      const accArr = Array.isArray(f.account_ids)
+        ? (f.account_ids as unknown[]).filter((id): id is string => typeof id === "string")
+        : typeof f.account_id === "string" && f.account_id
+          ? [f.account_id]
+          : [];
+      if (accArr.length === 1) params.set("account_id", accArr[0]);
+      else if (accArr.length > 1) params.set("account_ids", accArr.join(","));
       const catArr = Array.isArray(f.category_ids)
         ? (f.category_ids as unknown[]).filter((id): id is string => typeof id === "string")
         : typeof f.category_id === "string" && f.category_id

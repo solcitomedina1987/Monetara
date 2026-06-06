@@ -9,6 +9,7 @@ interface Props {
   searchParams: Promise<{
     periodo?: string;
     account_id?: string;
+    account_ids?: string;
     category_id?: string;
     /** Varias categorías separadas por coma */
     category_ids?: string;
@@ -23,6 +24,7 @@ export default async function TransactionsPage({ searchParams }: Props) {
   const hasUrlFilters =
     params.periodo !== undefined ||
     params.account_id !== undefined ||
+    params.account_ids !== undefined ||
     params.category_id !== undefined ||
     params.category_ids !== undefined ||
     params.fechaDesde !== undefined ||
@@ -35,11 +37,17 @@ export default async function TransactionsPage({ searchParams }: Props) {
       ? [params.category_id]
       : undefined;
 
+  const accountIdsFromUrl = params.account_ids
+    ? params.account_ids.split(",").map((s) => s.trim()).filter(Boolean)
+    : params.account_id
+      ? [params.account_id]
+      : undefined;
+
   const filtersForFetch: TransactionFilters = {
     periodo,
     showIngresos: true,
     showGastos: true,
-    account_id: params.account_id ?? undefined,
+    ...(accountIdsFromUrl?.length ? { account_ids: accountIdsFromUrl } : {}),
     ...(categoryIdsFromUrl?.length ? { category_ids: categoryIdsFromUrl } : {}),
     ...(periodo === "personalizado" && params.fechaDesde && params.fechaHasta
       ? { fechaDesde: params.fechaDesde, fechaHasta: params.fechaHasta }
@@ -51,7 +59,13 @@ export default async function TransactionsPage({ searchParams }: Props) {
     getActiveAccounts(),
     getActiveCategories(),
     getActiveTags(),
-    getTotalBalance(filtersForFetch.account_id),
+    getTotalBalance(
+      accountIdsFromUrl?.length === 1
+        ? accountIdsFromUrl[0]
+        : accountIdsFromUrl && accountIdsFromUrl.length > 1
+          ? accountIdsFromUrl
+          : undefined
+    ),
   ]);
 
   return (

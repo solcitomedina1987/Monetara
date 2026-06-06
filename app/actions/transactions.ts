@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Transaction, TransactionWithRelations, TransactionFilters } from "@/lib/types";
 import { balanceDeltaForTransaction } from "@/lib/transaction-balance";
+import { applyTransactionAccountOrFilter, resolvedAccountIds } from "@/lib/account-filter";
 import { format } from "date-fns";
 import { getPeriodDates } from "@/lib/transaction-period";
 
@@ -44,8 +45,9 @@ export async function getTransactions(filters?: TransactionFilters): Promise<Tra
     /* si && sg: sin filtro por tipo (ingresos, gastos y transferencias) */
   }
 
-  if (filters?.account_id) {
-    query = query.or(`account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`);
+  const accountIds = resolvedAccountIds(filters);
+  if (accountIds.length) {
+    query = applyTransactionAccountOrFilter(query, accountIds);
   }
 
   const categoryIds =
@@ -249,8 +251,9 @@ export async function getDashboardStats(filters?: TransactionFilters) {
     .gte("fecha", dates[0])
     .lte("fecha", dates[1]);
 
-  if (filters?.account_id) {
-    query = query.or(`account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`);
+  const accountIds = resolvedAccountIds(filters);
+  if (accountIds.length) {
+    query = applyTransactionAccountOrFilter(query, accountIds);
   }
 
   const { data, error } = await query;
@@ -264,23 +267,37 @@ export async function getDashboardStats(filters?: TransactionFilters) {
 
 /**
  * Saldo real total:
- * - Con accountId → get_account_balance(id):
- *   saldo_inicial + ingresos − gastos ± transferencias de esa cuenta.
- * - Sin accountId → suma get_account_balance de TODAS las cuentas del usuario,
- *   que es exactamente la sumatoria de los saldos individuales.
+ * - Una o varias cuentas → suma de get_account_balance por id.
+ * - Sin filtro → suma de todas las cuentas activas.
  */
-export async function getTotalBalance(accountId?: string): Promise<number> {
+export async function getTotalBalance(accountIdOrIds?: string | string[]): Promise<number> {
   const supabase = await createClient();
 
-  if (accountId) {
+  let ids: string[] | undefined;
+  if (typeof accountIdOrIds === "string") ids = [accountIdOrIds];
+  else if (Array.isArray(accountIdOrIds) && accountIdOrIds.length > 0) ids = accountIdOrIds;
+
+  if (ids?.length === 1) {
     const { data, error } = await supabase.rpc("get_account_balance", {
-      p_account_id: accountId,
+      p_account_id: ids[0],
     });
     if (error) throw error;
     return Math.round(Number(data ?? 0) * 100) / 100;
   }
 
-  // Global: solo cuentas activas (coherente con listados / filtros del dashboard)
+  if (ids && ids.length > 1) {
+    const balances = await Promise.all(
+      ids.map(async (id) => {
+        const { data, error } = await supabase.rpc("get_account_balance", {
+          p_account_id: id,
+        });
+        if (error) throw error;
+        return Number(data ?? 0);
+      })
+    );
+    return Math.round(balances.reduce((s, b) => s + b, 0) * 100) / 100;
+  }
+
   const { data: accounts, error: accErr } = await supabase
     .from("accounts")
     .select("id")
@@ -315,29 +332,27 @@ export async function getBalanceBeforePeriod(filters?: TransactionFilters): Prom
 
   // Fetch saldo_inicial for relevant account(s)
   let accountsQuery = supabase.from("accounts").select("id, saldo_inicial");
-  if (filters?.account_id) {
-    accountsQuery = accountsQuery.eq("id", filters.account_id);
+  const accountIds = resolvedAccountIds(filters);
+  if (accountIds.length === 1) {
+    accountsQuery = accountsQuery.eq("id", accountIds[0]);
+  } else if (accountIds.length > 1) {
+    accountsQuery = accountsQuery.in("id", accountIds);
   } else {
     accountsQuery = accountsQuery.eq("estado", "activo");
   }
   const { data: accounts } = await accountsQuery;
   if (!accounts || accounts.length === 0) return 0;
 
-  const accountIds = new Set(accounts.map((a) => a.id));
+  const accountIdSet = new Set(accounts.map((a) => a.id));
   const totalSaldoInicial = accounts.reduce((s, a) => s + Number(a.saldo_inicial), 0);
 
-  // periodStart is always defined now (getPeriodDates always returns dates)
-
-  // Sum all transactions strictly before the period start
   let txQuery = supabase
     .from("transactions")
     .select("monto, tipo, account_id, to_account_id")
     .lt("fecha", periodStart);
 
-  if (filters?.account_id) {
-    txQuery = txQuery.or(
-      `account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`
-    );
+  if (accountIds.length) {
+    txQuery = applyTransactionAccountOrFilter(txQuery, accountIds);
   }
 
   const { data: txs } = await txQuery;
@@ -345,28 +360,24 @@ export async function getBalanceBeforePeriod(filters?: TransactionFilters): Prom
 
   let delta = 0;
   for (const t of txs) {
-    delta += balanceDeltaForTransaction(t, accountIds);
+    delta += balanceDeltaForTransaction(t, accountIdSet);
   }
 
   return totalSaldoInicial + delta;
 }
 
-/**
- * Saldo real acumulado justo antes del calendario `fechaExclusive` (YYYY-MM-DD):
- * saldo_inicial + todas las transacciones con fecha estrictamente menor.
- * Usar la fecha mínima entre los movimientos ya cargados como línea base del running total,
- * para que coincida con get_account_balance tras sumar esos movimientos (y no quedar corto
- * cuando hay filtros de categoría/etiqueta o el primer movimiento no cae el día 1 del período).
- */
 export async function getBalanceBeforeExclusiveDate(
-  filters: Pick<TransactionFilters, "account_id"> | undefined,
+  filters: Pick<TransactionFilters, "account_id" | "account_ids"> | undefined,
   fechaExclusive: string
 ): Promise<number> {
   const supabase = await createClient();
 
   let accountsQuery = supabase.from("accounts").select("id, saldo_inicial");
-  if (filters?.account_id) {
-    accountsQuery = accountsQuery.eq("id", filters.account_id);
+  const accountIds = resolvedAccountIds(filters);
+  if (accountIds.length === 1) {
+    accountsQuery = accountsQuery.eq("id", accountIds[0]);
+  } else if (accountIds.length > 1) {
+    accountsQuery = accountsQuery.in("id", accountIds);
   } else {
     accountsQuery = accountsQuery.eq("estado", "activo");
   }
@@ -374,7 +385,7 @@ export async function getBalanceBeforeExclusiveDate(
   const { data: accounts } = await accountsQuery;
   if (!accounts || accounts.length === 0) return 0;
 
-  const accountIds = new Set(accounts.map((a) => a.id));
+  const accountIdSet = new Set(accounts.map((a) => a.id));
   const totalSaldoInicial = accounts.reduce((s, a) => s + Number(a.saldo_inicial), 0);
 
   let txQuery = supabase
@@ -382,10 +393,8 @@ export async function getBalanceBeforeExclusiveDate(
     .select("monto, tipo, account_id, to_account_id")
     .lt("fecha", fechaExclusive);
 
-  if (filters?.account_id) {
-    txQuery = txQuery.or(
-      `account_id.eq.${filters.account_id},to_account_id.eq.${filters.account_id}`
-    );
+  if (accountIds.length) {
+    txQuery = applyTransactionAccountOrFilter(txQuery, accountIds);
   }
 
   const { data: txs } = await txQuery;
@@ -393,7 +402,7 @@ export async function getBalanceBeforeExclusiveDate(
 
   let delta = 0;
   for (const t of txs) {
-    delta += balanceDeltaForTransaction(t, accountIds);
+    delta += balanceDeltaForTransaction(t, accountIdSet);
   }
 
   return totalSaldoInicial + delta;
@@ -411,8 +420,11 @@ export async function getExpensesByCategory(filters?: TransactionFilters) {
     .gte("fecha", dates[0])
     .lte("fecha", dates[1]);
 
-  if (filters?.account_id) {
-    query = query.eq("account_id", filters.account_id);
+  const accountIds = resolvedAccountIds(filters);
+  if (accountIds.length === 1) {
+    query = query.eq("account_id", accountIds[0]);
+  } else if (accountIds.length > 1) {
+    query = query.in("account_id", accountIds);
   }
 
   const { data, error } = await query;
@@ -447,8 +459,11 @@ export async function getExpensesByTag(filters?: TransactionFilters) {
     .gte("fecha", dates[0])
     .lte("fecha", dates[1]);
 
-  if (filters?.account_id) {
-    query = query.eq("account_id", filters.account_id);
+  const accountIds = resolvedAccountIds(filters);
+  if (accountIds.length === 1) {
+    query = query.eq("account_id", accountIds[0]);
+  } else if (accountIds.length > 1) {
+    query = query.in("account_id", accountIds);
   }
 
   const { data, error } = await query;
